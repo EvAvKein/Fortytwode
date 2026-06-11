@@ -1,0 +1,9 @@
+# Keep the build context lean; editing these must not bust the build cache.
+.git/
+fortytwode
+output/
+*.md
+.env
+.env.example
+docker-compose*.yml
+deploy/

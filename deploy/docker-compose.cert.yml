@@ -1,0 +1,31 @@
+# One-shot stack that obtains (or renews) the Let's Encrypt certificate via the
+# HTTP-01 webroot challenge, then exits. Run it with port 80 free — `deploy.sh`
+# (`make deploy`) sequences it before the prod stack. Certs land on the host at
+# /etc/letsencrypt, which the prod Nginx mounts read-only.
+#
+# Needs DOMAIN and CERTBOT_EMAIL from .env. Re-running is safe: --keep-until-expiring
+# only re-issues when the cert is near expiry, so this same stack handles renewal.
+services:
+  nginx_cert:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx/cert.conf:/etc/nginx/nginx.conf:ro
+      - /tmp/acme_challenge:/tmp/acme_challenge
+
+  certbot:
+    image: certbot/certbot
+    depends_on:
+      - nginx_cert
+    entrypoint: ""
+    # --cert-name pins a fixed lineage path (/etc/letsencrypt/live/fortytwode/) so
+    # the prod Nginx cert paths never need to mention the domain.
+    command: >
+      sh -c "certbot certonly --webroot -w /tmp/acme_challenge
+      --cert-name fortytwode -d ${DOMAIN} --email ${CERTBOT_EMAIL}
+      --agree-tos --no-eff-email --keep-until-expiring
+      --rsa-key-size 4096 --non-interactive --preferred-challenges http"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /tmp/acme_challenge:/tmp/acme_challenge

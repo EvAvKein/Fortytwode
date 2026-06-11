@@ -1,0 +1,19 @@
+package pages
+
+// LoginForm is the email/password sign-in page; errMsg is shown when non-empty.
+templ LoginForm(errMsg string) {
+	@Layout("Log in") {
+		<main class="centered">
+			<h1>Log in</h1>
+			if errMsg != "" {
+				<p class="error">{ errMsg }</p>
+			}
+			<form method="post" action="/api/login" class="form">
+				<label>Email <input type="email" name="email" required/></label>
+				<label>Password <input type="password" name="password" required/></label>
+				<button type="submit">Log in</button>
+			</form>
+			<p class="muted"><a href="/">Home</a></p>
+		</main>
+	}
+}

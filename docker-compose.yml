@@ -1,0 +1,97 @@
+# Default stack = development: Postgres, the app (rebuilt on source edits via
+# `docker compose watch`), and an HTTP-only Nginx in front. Run `make dev`, then
+# open http://localhost:8080. The TLS + rate-limiting production stack layers
+# docker-compose.prod.yml on top — see `make prod`.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fortytwode
+      # Only applied on first init — an existing pgdata volume keeps its old
+      # password (see POSTGRES_PASSWORD in .env.example).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fortytwode}
+      POSTGRES_DB: fortytwode
+    ports:
+      # Loopback-only, for host tools (psql, running the binary direct, etc.).
+      # The prod overlay removes this entirely — Postgres must never be public.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - serverToDb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fortytwode -d fortytwode"]
+      # Probe fast only during boot (start_interval) so the gate releases quickly,
+      # then rarely once healthy — the runtime check is just a status label here.
+      interval: 1m
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+
+  app:
+    build: .
+    env_file:
+      - .env # FT_CLIENT_ID / FT_CLIENT_SECRET
+    environment:
+      # Override .env for in-container networking: reach Postgres by service name,
+      # and point OAuth at the Nginx-fronted dev URL.
+      DATABASE_URL: postgres://fortytwode:${POSTGRES_PASSWORD:-fortytwode}@db:5432/fortytwode?sslmode=disable
+      PORT: "4242"
+      FT_REDIRECT_URI: http://localhost:8080/api/auth/42/callback
+    # Wait for Postgres to actually accept connections (not just exist) so the
+    # boot-time migrations don't race the database coming up.
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - serverToDb
+      - proxyToServer
+    healthcheck:
+      # busybox wget ships in the alpine runtime image; non-2xx (e.g. the 503 when
+      # the DB is unreachable) exits non-zero and marks the container unhealthy.
+      # 127.0.0.1 (not localhost) so busybox wget doesn't try IPv6 ::1 and fail.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4242/healthcheck"]
+      interval: 1m
+      timeout: 2s
+      retries: 10
+      start_period: 10s
+      start_interval: 1s
+    # Hot reload: any source edit rebuilds the image and recreates this service.
+    # A full rebuild reruns `go generate` + `go build`, so it correctly picks up
+    # templ, Go, and the go:embed-ed CSS/JS alike.
+    develop:
+      watch:
+        - action: rebuild
+          path: ./internal
+        - action: rebuild
+          path: ./main.go
+        - action: rebuild
+          path: ./go.mod
+        - action: rebuild
+          path: ./go.sum
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./deploy/nginx/dev.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "8080:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - proxyToServer
+
+volumes:
+  pgdata:
+    # Pin the name so it stays decoupled from the project directory: renaming the
+    # repo folder would otherwise make Compose look for a differently-named volume
+    # and silently start with an empty one.
+    name: fortytwode_pgdata
+
+# Split networks isolate the tiers: Nginx can reach the app, the app can reach the
+# db, but Nginx cannot reach the db directly.
+networks:
+  proxyToServer:
+  serverToDb:

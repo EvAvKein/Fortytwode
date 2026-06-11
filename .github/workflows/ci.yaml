@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  Go:
+    runs-on: ubuntu-latest
+
+    # Postgres for the store integration tests. Open() applies the embedded
+    # schema, so no migration step is needed — just point DATABASE_URL here.
+    services:
+      db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: fortytwode
+          POSTGRES_PASSWORD: fortytwode
+          POSTGRES_DB: fortytwode
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fortytwode"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # `make check` regenerates the templ code (gitignored), then fails on any
+      # unformatted source, vets, and builds.
+      - name: Check (generate, gofmt, vet, build)
+        run: make check
+
+      # DATABASE_URL switches the store tests on (they self-skip when it's unset).
+      - name: Test
+        env:
+          DATABASE_URL: postgres://fortytwode:fortytwode@localhost:5432/fortytwode?sslmode=disable
+        run: make test
+
+      # Scan dependencies for known CVEs. Its own step (not in `make check`) so the
+      # local pre-commit gate stays fast/offline; govulncheck fetches the vuln DB.
+      - name: Vulnerability scan
+        run: make vuln

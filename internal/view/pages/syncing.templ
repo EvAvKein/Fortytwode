@@ -1,0 +1,36 @@
+package pages
+
+import "github.com/EvAvKein/Fortytwode/internal/view/assets"
+
+// Syncing shows the live progress bar (driven by the syncing script over SSE) and,
+// once done, the next-step actions: download, plus a link to the now-updated
+// profile (logged-in re-sync), or — for an anonymous sync — sign-up, which the
+// script swaps for sign-in if the 42 identity turned out to be registered. The
+// script is loaded from the assets package (deferred, so the DOM it drives exists).
+templ Syncing(loggedIn bool, profileLogin string) {
+	@Layout("Syncing…") {
+		<main class="centered">
+			<h1>Syncing your 42 data…</h1>
+			<div class="progress"><div id="bar" class="progress-bar"></div></div>
+			<p id="label" class="muted">Starting…</p>
+			<div id="actions" class="hidden">
+				<p>
+					<a class="button" href="/api/download">Download raw data</a>
+					<a class="button" href="/api/download/curated">Download curated data</a>
+				</p>
+				if loggedIn {
+					<p><a href={ templ.SafeURL("/u/" + profileLogin) }>View your profile</a></p>
+				} else {
+					<p id="signup-action"><a href="/signup">Sign up to keep your profile</a></p>
+					<p id="signin-action" class="hidden"><a href="/api/syncing/signin">Account detected — sign in</a></p>
+				}
+			</div>
+			<p id="error" class="error hidden"></p>
+			<div id="error-actions" class="hidden">
+				<p><a class="button" href="/api/sync">Sync again</a></p>
+				<p><a href="/">Back home</a></p>
+			</div>
+			<script src={ assets.SyncingSrc } defer></script>
+		</main>
+	}
+}

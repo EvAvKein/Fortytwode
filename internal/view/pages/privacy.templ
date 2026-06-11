@@ -1,0 +1,54 @@
+package pages
+
+// Privacy is the privacy notice (GDPR Art. 13/14), linked from the footer.
+templ Privacy() {
+	@Layout("Privacy") {
+		<main class="centered">
+			<nav class="nav"><a href="/">Home</a></nav>
+			<h1>Privacy</h1>
+			<p>
+				Fortytwode caches a copy of your 42 profile so it can show you — and, if
+				you opt in, others — a dashboard of your progress.
+			</p>
+			<h2>What we store</h2>
+			<ul>
+				<li>Your own 42 profile: name, login, email, campus, wallet, evaluation points, cursus, skills, achievements and titles.</li>
+				<li>Your activity: projects, evaluations (marks, flags and feedback text), locations, events, quests and correction-point history.</li>
+				<li>
+					<strong>We remove other people's identities before storing.</strong>
+					Evaluations keep the outcome and feedback text, but the logins of
+					correctors, corrected students, teammates and feedback authors are
+					stripped during processing and never reach our database.
+				</li>
+			</ul>
+			<h2>What we don't store</h2>
+			<p>
+				The full raw 42 response is held only briefly, in memory, during a sync so
+				that you can download it — it is never written to our database. We discard
+				everything we don't use (evaluation guidelines, language and flag lists,
+				internal ids, and so on).
+			</p>
+			<h2>Lawful basis &amp; who can see it</h2>
+			<p>
+				We process your own data to provide the service you asked for. Your profile
+				is private by default — visible only to you and, for the sections you
+				choose, to other signed-in 42 users. Only when you make your profile public
+				in settings is it visible without an account.
+			</p>
+			<h2>Retention &amp; deletion</h2>
+			<p>
+				Your snapshot is kept until you delete it. You can erase your account and
+				all stored data at any time from <a href="/settings">Settings</a> →
+				"Delete my data". Short-lived sync rate-limit records are purged
+				automatically.
+			</p>
+			<h2>A note on feedback text</h2>
+			<p>
+				The feedback we keep is free-form and could, in rare cases, mention someone
+				by name; we don't edit its contents.
+			</p>
+			<h2>Contact</h2>
+			<p>Questions or requests: <a href="mailto:evavkein@gmail.com">evavkein@gmail.com</a>.</p>
+		</main>
+	}
+}

@@ -1,0 +1,39 @@
+package profile
+
+import "github.com/EvAvKein/Fortytwode/internal/view/model"
+
+// EvalList renders peer evaluations as cards: project (with the team name beside it
+// when distinctive) + date frame the full feedback text (no truncation), with mark,
+// flag and rating shown below. Uses <ol> for chronological semantics; markers are
+// hidden via CSS.
+templ EvalList(items []model.EvalItem) {
+	<ol class="evals">
+		for _, e := range items {
+			<li>
+				<div class="eval-top">
+					<span class="eval-title">
+						<span class="eval-project">{ e.Project }</span>
+						if e.Team != "" {
+							<span class="eval-team">{ e.Team }</span>
+						}
+					</span>
+					<span class="eval-date">{ e.Date }</span>
+				</div>
+				if e.Feedback != "" {
+					<p class="eval-feedback">{ e.Feedback }</p>
+				} else {
+					<p class="eval-feedback empty">No written feedback.</p>
+				}
+				<div class="eval-meta">
+					<span class={ "eval-mark", e.Mark.Tone }>Mark { e.Mark.Text }</span>
+					<span class="sep">·</span>
+					<span class={ "eval-flag", e.Flag.Tone }>Flag: { e.Flag.Text }</span>
+					if e.Rating != "" {
+						<span class="sep">·</span>
+						<span class="eval-rating">{ e.Rating }</span>
+					}
+				</div>
+			</li>
+		}
+	</ol>
+}

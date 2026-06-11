@@ -1,0 +1,36 @@
+package pages
+
+import (
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
+	"github.com/EvAvKein/Fortytwode/internal/view/profile"
+)
+
+// Page is the dashboard/profile: an optional owner nav, the profile header, the
+// deep "Cursus & Skills" panel, then one collapsible curated panel per resource.
+// templ escapes every interpolated value, so no manual HTML-escaping is needed.
+templ Page(d model.PageData) {
+	@Layout("My 42 data") {
+		if d.Owner {
+			<nav class="nav">
+				<a href="/api/sync">Re-sync</a>
+				<a href="/api/download/saved">Download saved data</a>
+				<a href="/settings">Settings</a>
+				<form method="post" action="/api/logout" class="inline"><button type="submit">Log out</button></form>
+			</nav>
+		}
+		if d.Status != "" {
+			<div class={ "status", templ.KV("error", d.IsError) }>{ d.Status }</div>
+		}
+		if d.Profile != nil {
+			@profile.ProfileHeader(d.Profile)
+		}
+		<main>
+			if d.CursusSkills != nil {
+				@profile.CursusPanel(d.CursusSkills)
+			}
+			for _, s := range d.Sections {
+				@profile.SectionPanel(s)
+			}
+		</main>
+	}
+}

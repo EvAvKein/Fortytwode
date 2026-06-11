@@ -1,0 +1,11 @@
+/fortytwode
+.env
+.token.json
+output/
+*.log
+
+# database dumps from `make backup`
+*.dump
+
+# templ output — generated locally via `go generate ./...`, not versioned
+*_templ.go

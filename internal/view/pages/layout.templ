@@ -1,0 +1,29 @@
+// Package pages holds the full-page templ templates rendered by the web handlers,
+// plus the shared HTML shell (Layout) that wraps every page. The profile/dashboard
+// page's sub-panels live in the sibling profile package.
+package pages
+
+import "github.com/EvAvKein/Fortytwode/internal/view/assets"
+
+// Layout is the shared HTML shell: head + body. The stylesheet and the site-wide
+// script are loaded from the assets package as separate cacheable files (see that
+// package) rather than inlined, so editing them doesn't churn every page's HTML
+// and the pages can ship a strict script-src CSP.
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<link rel="stylesheet" href={ assets.StyleHref }/>
+			<script src={ assets.AppSrc } defer></script>
+		</head>
+		<body>
+			{ children... }
+			<footer class="footer muted">
+				<a href="/privacy">Privacy</a>
+			</footer>
+		</body>
+	</html>
+}

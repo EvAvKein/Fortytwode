@@ -1,0 +1,33 @@
+package profile
+
+import "github.com/EvAvKein/Fortytwode/internal/view/model"
+
+// Table renders a Section's columns and tone-coloured cells inside a scroll
+// container, so long tables stay digestible; the sticky <th> keeps the header
+// visible while scrolling.
+templ Table(s model.Section) {
+	if len(s.Rows) == 0 {
+		<div class="empty">No records.</div>
+	} else {
+		<div class="tscroll">
+			<table>
+				<thead>
+					<tr>
+						for _, col := range s.Columns {
+							<th>{ col }</th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range s.Rows {
+						<tr>
+							for _, cell := range row {
+								<td class={ cell.Tone }>{ cell.Text }</td>
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}

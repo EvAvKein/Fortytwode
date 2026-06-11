@@ -1,0 +1,29 @@
+// Package profile holds the templ partials for the profile/dashboard page: the
+// profile header plus the cursus, section, table, and evaluation-list panels.
+// They're rendered inside the shared Layout by the pages package.
+package profile
+
+import "github.com/EvAvKein/Fortytwode/internal/view/model"
+
+templ ProfileHeader(p *model.Profile) {
+	<header class="profile">
+		if p.ImageURL != "" {
+			<img src={ p.ImageURL } alt=""/>
+		}
+		<div>
+			<h1>{ p.Name }</h1>
+			if p.Login != "" {
+				<div class="login">{ "@" + p.Login }</div>
+			}
+			if p.Coalition != nil {
+				<div class="coalition" style={ p.Coalition.Style }>{ p.Coalition.Name } · { p.Coalition.Score }</div>
+			}
+			<dl>
+				for _, kv := range p.Rows {
+					<dt>{ kv.Key }</dt>
+					<dd>{ kv.Value }</dd>
+				}
+			</dl>
+		</div>
+	</header>
+}
