@@ -10,9 +10,19 @@
 
 * {
 	box-sizing: border-box;
+	outline-offset: 3px;
 }
 
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	margin: 0;
+}
 body {
+	min-height: 100vh;
 	position: relative;
 	margin: 0;
 	padding-bottom: 3.5rem;
@@ -47,7 +57,7 @@ header.profile {
 	align-items: center;
 	padding: 1.5rem;
 	max-width: 1000px;
-	margin: 1.5rem auto 0;
+	margin: 1rem auto 0;
 	background: var(--card);
 	border: 1px solid var(--border);
 	border-radius: 12px;
@@ -352,7 +362,7 @@ ol.evals {
 	color: #5fd0a0;
 }
 .hidden {
-	display: none;
+	display: none !important;
 }
 
 .inline {
@@ -384,7 +394,7 @@ ol.evals {
 .centered {
 	max-width: 540px;
 	margin: 0 auto;
-	padding: 0 1rem;
+	padding: 1rem 1rem 0;
 
 	h1 {
 		font-size: 1.6rem;
