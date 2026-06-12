@@ -6,12 +6,14 @@ import "github.com/EvAvKein/Fortytwode/internal/view/model"
 // per-section public/private toggle.
 templ Settings(d model.SettingsData) {
 	@Layout("Settings") {
+		<nav class="nav">
+			<a href={ templ.SafeURL("/u/" + d.Login) }>Back to profile</a>
+			<a href="/api/sync">Re-sync</a>
+			<form method="post" action="/api/logout" class="inline margin-left-auto">
+				<button type="submit">Log out</button>
+			</form>
+		</nav>
 		<main class="centered">
-			<nav class="nav">
-				<a href={ templ.SafeURL("/u/" + d.Login) }>Back to profile</a>
-				<a href="/api/sync">Re-sync</a>
-				<form method="post" action="/api/logout" class="inline"><button type="submit">Log out</button></form>
-			</nav>
 			<h1>Profile settings</h1>
 			if d.Saved {
 				<p class="good">Saved.</p>

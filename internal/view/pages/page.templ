@@ -11,20 +11,22 @@ import (
 templ Page(d model.PageData) {
 	@Layout("My 42 data") {
 		if d.Owner {
-			<nav class="nav">
+			<nav class="nav profile">
 				<a href="/api/sync">Re-sync</a>
 				<a href="/api/download/saved">Download saved data</a>
 				<a href="/settings">Settings</a>
-				<form method="post" action="/api/logout" class="inline"><button type="submit">Log out</button></form>
+				<form method="post" action="/api/logout" class="inline margin-left-auto">
+					<button type="submit">Log out</button>
+				</form>
 			</nav>
 		}
-		if d.Status != "" {
-			<div class={ "status", templ.KV("error", d.IsError) }>{ d.Status }</div>
-		}
-		if d.Profile != nil {
-			@profile.ProfileHeader(d.Profile)
-		}
 		<main>
+			if d.Status != "" {
+				<div class={ "status", templ.KV("error", d.IsError) }>{ d.Status }</div>
+			}
+			if d.Profile != nil {
+				@profile.ProfileHeader(d.Profile)
+			}
 			if d.CursusSkills != nil {
 				@profile.CursusPanel(d.CursusSkills)
 			}

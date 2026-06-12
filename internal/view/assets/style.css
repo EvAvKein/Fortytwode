@@ -13,8 +13,9 @@
 }
 
 body {
-	min-height: 100vh;
+	position: relative;
 	margin: 0;
+	padding-bottom: 3.5rem;
 	color: var(--text);
 	background: var(--bg);
 	font:
@@ -23,6 +24,17 @@ body {
 		Segoe UI,
 		Roboto,
 		sans-serif;
+}
+
+.footer {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	width: 100%;
+	padding: 1rem;
+	border-top: 1px solid var(--border);
+	text-align: center;
+	font-size: 0.85rem;
 }
 
 a {
@@ -87,7 +99,7 @@ header.profile {
 
 main {
 	max-width: 1000px;
-	margin: 1.5rem auto 4rem;
+	margin: 0 auto 4rem;
 	padding: 0 1rem;
 }
 
@@ -342,9 +354,36 @@ ol.evals {
 .hidden {
 	display: none;
 }
+
+.inline {
+	display: inline;
+}
+
+.margin-left-auto {
+	margin-left: auto;
+}
+
+.nav {
+	width: clamp(400px, 100%, 800px);
+	margin: auto;
+	padding: 0.5rem 1rem;
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 1rem;
+
+	&.profile {
+		width: clamp(400px, 100%, 1050px);
+	}
+
+	&:has(+ .centered) {
+		width: clamp(400px, 100%, 550px);
+	}
+}
+
 .centered {
 	max-width: 540px;
-	margin: 3rem auto;
+	margin: 0 auto;
 	padding: 0 1rem;
 
 	h1 {
@@ -360,18 +399,6 @@ ol.evals {
 	color: #04282a;
 	font-weight: 700;
 	text-decoration: none;
-}
-.nav {
-	display: flex;
-	gap: 1rem;
-	align-items: center;
-	flex-wrap: wrap;
-	max-width: 1000px;
-	padding: 0 1rem;
-}
-
-.inline {
-	display: inline;
 }
 
 button {
@@ -446,15 +473,7 @@ button {
 	}
 }
 
-/* footer + danger actions */
-.footer {
-	max-width: 1000px;
-	margin: 2.5rem auto 1.5rem;
-	padding: 1rem;
-	border-top: 1px solid var(--border);
-	text-align: center;
-	font-size: 0.85rem;
-}
+/* danger actions */
 
 .danger-zone {
 	margin-top: 2rem;
