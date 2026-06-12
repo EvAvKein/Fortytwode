@@ -9,8 +9,8 @@ templ SignupForm(errMsg string, expired bool) {
 			<h1>Create an account</h1>
 			if expired {
 				<p class="error">{ errMsg }</p>
-				<p><a class="button" href="/api/sync">Sync again</a></p>
-				<p class="muted"><a href="/login">Log in</a></p>
+				<a class="button" href="/api/sync">Sync again</a>
+				<a class="muted" href="/login">Log in</a>
 			} else {
 				<p class="muted">Saves the 42 data you just synced to a profile you can share.</p>
 				if errMsg != "" {
@@ -19,7 +19,7 @@ templ SignupForm(errMsg string, expired bool) {
 				<form method="post" action="/api/signup" class="form">
 					<label>Email <input type="email" name="email" required/></label>
 					<label>Password (min 8) <input type="password" name="password" minlength="8" required/></label>
-					<button type="submit">Sign up</button>
+					<button type="submit" class="button">Sign up</button>
 				</form>
 				<p class="muted"><a href="/login">Log in</a></p>
 			}

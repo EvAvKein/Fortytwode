@@ -21,6 +21,7 @@ h5,
 h6 {
 	margin: 0;
 }
+
 body {
 	min-height: 100vh;
 	position: relative;
@@ -403,23 +404,32 @@ ol.evals {
 
 .button {
 	display: inline-block;
-	padding: 0.55rem 1.1rem;
+	padding: 0.5rem 1rem;
 	border-radius: 8px;
-	background: var(--accent);
-	color: #04282a;
 	font-weight: 700;
 	text-decoration: none;
-}
-
-button {
-	cursor: pointer;
-	padding: 0.5rem 1rem;
+	outline-offset: 5px;
 	border-radius: 8px;
 	border: 1px solid var(--border);
 	background: var(--card);
 	color: var(--text);
+
+	&.bright {
+		background: var(--accent);
+		color: #04282a;
+	}
+}
+
+.spaced-apart {
+	display: flex;
+	justify-content: space-around;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+button {
 	font: inherit;
-	font-weight: 600;
+	cursor: pointer;
 }
 
 .form {
@@ -465,6 +475,10 @@ button {
 		color: var(--muted);
 		padding: 0 0.4rem;
 	}
+}
+
+#sync-success-actions > div {
+	margin-top: 1rem;
 }
 
 .progress {

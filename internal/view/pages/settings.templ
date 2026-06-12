@@ -10,7 +10,7 @@ templ Settings(d model.SettingsData) {
 			<a href={ templ.SafeURL("/u/" + d.Login) }>Back to profile</a>
 			<a href="/api/sync">Re-sync</a>
 			<form method="post" action="/api/logout" class="inline margin-left-auto">
-				<button type="submit">Log out</button>
+				<button type="submit" class="button">Log out</button>
 			</form>
 		</nav>
 		<main class="centered">
@@ -35,13 +35,13 @@ templ Settings(d model.SettingsData) {
 						</label>
 					}
 				</fieldset>
-				<button type="submit">Save</button>
+				<button type="submit" class="button">Save</button>
 			</form>
 			<div class="danger-zone">
 				<h2>Delete my data</h2>
 				<p class="muted">Permanently erase your account and the stored 42 snapshot. This can't be undone.</p>
 				<form method="post" action="/api/account/delete" data-confirm="Permanently delete your account and all stored data? This cannot be undone.">
-					<button type="submit" class="danger">Delete my data</button>
+					<button type="submit" class="button danger">Delete my data</button>
 				</form>
 			</div>
 		</main>
