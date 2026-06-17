@@ -5,24 +5,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/EvAvKein/Fortytwode/internal/snapshot"
 )
 
 // ----------------------------------------------------------------------------
 // Small formatting helpers
 // ----------------------------------------------------------------------------
-
-func topLevel(cursus []snapshot.Cursus) (float64, bool) {
-	if len(cursus) == 0 {
-		return 0, false
-	}
-	level := 0.0
-	for _, c := range cursus {
-		level = max(level, c.Level)
-	}
-	return level, true
-}
 
 // stars renders a 0–5 rating as filled/empty stars, clamped to range.
 func stars(rating int) string {

@@ -132,9 +132,6 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 	add("Campus", p.Campus)
 	add("Wallet", strconv.Itoa(p.Wallet))
 	add("Eval points", strconv.Itoa(p.CorrectionPoint))
-	if lvl, ok := topLevel(p.Cursus); ok {
-		add("Level", fmt.Sprintf("%.2f", lvl))
-	}
 	add("Pool", strings.TrimSpace(p.PoolMonth+" "+p.PoolYear))
 
 	if len(coalitions) > 0 {
