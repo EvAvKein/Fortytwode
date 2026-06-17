@@ -6,7 +6,7 @@ package profile
 import "github.com/EvAvKein/Fortytwode/internal/view/model"
 
 templ ProfileHeader(p *model.Profile) {
-	<header class="profile">
+	<header class="profile" style={ p.BorderStyle() }>
 		if p.ImageURL != "" {
 			<img src={ p.ImageURL } alt=""/>
 		}
@@ -16,7 +16,10 @@ templ ProfileHeader(p *model.Profile) {
 				<div class="login">{ "@" + p.Login }</div>
 			}
 			if p.Coalition != nil {
-				<div class="coalition" style={ p.Coalition.Style }>{ p.Coalition.Name } · { p.Coalition.Score }</div>
+				<div class="coalition">
+					<span class="dot" style={ "color:" + p.Coalition.Color }>●</span>
+					{ p.Coalition.Name } · { p.Coalition.Score }
+				</div>
 			}
 			<dl>
 				for _, kv := range p.Rows {

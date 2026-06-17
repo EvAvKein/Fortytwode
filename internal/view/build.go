@@ -142,7 +142,7 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		prof.Coalition = &model.CoalitionBadge{
 			Name:  c.Name,
 			Score: strconv.Itoa(c.Score),
-			Style: "background:" + cmp.Or(c.Color, "#00babc"),
+			Color: cmp.Or(c.Color, "#00babc"),
 		}
 	}
 	return prof

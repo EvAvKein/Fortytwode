@@ -82,13 +82,13 @@ header.profile {
 	}
 
 	.coalition {
-		display: inline-block;
 		margin: 0.4rem 0 0.2rem;
-		padding: 0.15rem 0.7rem;
-		border-radius: 999px;
-		color: #fff;
-		font-size: 0.8rem;
-		font-weight: 600;
+		font-size: 0.85rem;
+		color: var(--muted);
+
+		.dot {
+			margin-right: 0.3rem;
+		}
 	}
 
 	dl {

@@ -42,9 +42,9 @@ type SkillBar struct {
 	Name, Level, Style string
 }
 
-// CoalitionBadge is the coalition pill in the header (Style = "background:#hex").
+// CoalitionBadge is the coalition indicator in the header (Color = "#hex").
 type CoalitionBadge struct {
-	Name, Score, Style string
+	Name, Score, Color string
 }
 
 // CursusSkills is the deep "Cursus & Skills" panel.
@@ -58,6 +58,14 @@ type Profile struct {
 	Name, Login, ImageURL string
 	Rows                  []KV
 	Coalition             *CoalitionBadge
+}
+
+// BorderStyle returns the inline style for the coalition left-border accent.
+func (p *Profile) BorderStyle() string {
+	if p.Coalition == nil {
+		return ""
+	}
+	return "border-left:4px solid " + p.Coalition.Color
 }
 
 // PageData is everything a single render of the dashboard needs.
