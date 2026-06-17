@@ -25,12 +25,12 @@ templ EvalList(items []model.EvalItem) {
 					<p class="eval-feedback empty">No written feedback.</p>
 				}
 				<div class="eval-meta">
-					<span class={ "eval-mark", e.Mark.Tone }>Mark { e.Mark.Text }</span>
+					<span class={ "eval-mark", e.Mark.Tone }>Mark: { e.Mark.Text }</span>
 					<span class="sep">·</span>
 					<span class={ "eval-flag", e.Flag.Tone }>Flag: { e.Flag.Text }</span>
 					if e.Rating != "" {
 						<span class="sep">·</span>
-						<span class="eval-rating">{ e.Rating }</span>
+						<span>Rating: <span class="eval-rating">{ e.Rating }</span></span>
 					}
 				</div>
 			</li>
