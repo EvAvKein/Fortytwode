@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/EvAvKein/Fortytwode/internal/api"
+	"github.com/EvAvKein/Fortytwode/internal/api42"
 )
 
 // ----------------------------------------------------------------------------
@@ -138,7 +138,7 @@ func Curate(raw map[string]json.RawMessage) map[string]json.RawMessage {
 	// owner's own login is kept; everyone else's is scrubbed from evaluations.
 	ownerLogin := ""
 	if rawMe, ok := raw["me"]; ok {
-		var me api.Me
+		var me api42.Me
 		if err := json.Unmarshal(rawMe, &me); err == nil {
 			ownerLogin = me.Login
 			out["me"] = marshal(profileFrom(me))
@@ -153,14 +153,14 @@ func Curate(raw map[string]json.RawMessage) map[string]json.RawMessage {
 	// re-sync -> names simply don't resolve, which the view falls back from.
 	projectNames := map[int]string{}
 	if rawPU, ok := raw["projects_users"]; ok {
-		var pus []api.ProjectUser
+		var pus []api42.ProjectUser
 		if json.Unmarshal(rawPU, &pus) == nil {
 			for _, pu := range pus {
 				projectNames[pu.Project.ID] = pu.Project.Name
 			}
 		}
 	}
-	evalMapper := func(st api.ScaleTeam) Eval { return evalFrom(st, ownerLogin, projectNames) }
+	evalMapper := func(st api42.ScaleTeam) Eval { return evalFrom(st, ownerLogin, projectNames) }
 	curateInto(out, raw, "scale_teams_as_corrector", evalMapper)
 	curateInto(out, raw, "scale_teams_as_corrected", evalMapper)
 	curateInto(out, raw, "locations", locationFrom)
@@ -205,10 +205,10 @@ func deref(p *string) string {
 }
 
 // ----------------------------------------------------------------------------
-// Per-resource mappers (api.* -> curated)
+// Per-resource mappers (api42.* -> curated)
 // ----------------------------------------------------------------------------
 
-func profileFrom(me api.Me) Profile {
+func profileFrom(me api42.Me) Profile {
 	p := Profile{
 		Login:           me.Login,
 		Name:            cmp.Or(me.Displayname, me.UsualFullName, me.Login),
@@ -240,7 +240,7 @@ func profileFrom(me api.Me) Profile {
 	return p
 }
 
-func titlesFrom(me api.Me) []Title {
+func titlesFrom(me api42.Me) []Title {
 	names := map[int]string{}
 	for _, t := range me.Titles {
 		names[t.ID] = t.Name
@@ -252,11 +252,11 @@ func titlesFrom(me api.Me) []Title {
 	return out
 }
 
-func coalitionFrom(c api.Coalition) Coalition {
+func coalitionFrom(c api42.Coalition) Coalition {
 	return Coalition{Name: c.Name, Score: c.Score, Color: c.Color}
 }
 
-func projectFrom(p api.ProjectUser) Project {
+func projectFrom(p api42.ProjectUser) Project {
 	return Project{
 		Name:      p.Project.Name,
 		FinalMark: p.FinalMark,
@@ -266,7 +266,7 @@ func projectFrom(p api.ProjectUser) Project {
 	}
 }
 
-func evalFrom(st api.ScaleTeam, ownerLogin string, projectNames map[int]string) Eval {
+func evalFrom(st api42.ScaleTeam, ownerLogin string, projectNames map[int]string) Eval {
 	// Collect every participant's login except the owner's, to scrub from the kept
 	// name/text fields: a solo project's team name is literally "<login>'s group",
 	// and free-text comments can name people too.
@@ -349,18 +349,18 @@ func loginScrubber(logins []string) func(string) string {
 	}
 }
 
-func locationFrom(l api.Location) Location {
+func locationFrom(l api42.Location) Location {
 	return Location{Host: l.Host, BeginAt: l.BeginAt, EndAt: l.EndAt}
 }
 
-func eventFrom(e api.EventUser) Event {
+func eventFrom(e api42.EventUser) Event {
 	return Event{Name: e.Event.Name, Kind: e.Event.Kind, BeginAt: e.Event.BeginAt}
 }
 
-func questFrom(q api.QuestUser) Quest {
+func questFrom(q api42.QuestUser) Quest {
 	return Quest{Name: q.Quest.Name, ValidatedAt: q.ValidatedAt, Prct: q.Prct}
 }
 
-func correctionPointFrom(h api.CorrectionPointHistoric) CorrectionPoint {
+func correctionPointFrom(h api42.CorrectionPointHistoric) CorrectionPoint {
 	return CorrectionPoint{Reason: h.Reason, Sum: h.Sum, Total: h.Total, CreatedAt: h.CreatedAt}
 }

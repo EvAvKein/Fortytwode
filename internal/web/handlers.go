@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/EvAvKein/Fortytwode/internal/api"
+	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/auth"
 	"github.com/EvAvKein/Fortytwode/internal/config"
 	"github.com/EvAvKein/Fortytwode/internal/fetch"
@@ -158,7 +158,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int64) {
 	go func() {
 		ctx := context.Background() // independent of the request; bounded by api timeouts
-		client := api.New(token, s.limiter)
+		client := api42.New(token, s.limiter)
 
 		// reservedID/ok drive the cooldown: a slot is claimed once /me reveals the
 		// 42 user, and released if the sync then fails so the user can retry now.

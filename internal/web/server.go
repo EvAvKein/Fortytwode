@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/EvAvKein/Fortytwode/internal/api"
+	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/config"
 	"github.com/EvAvKein/Fortytwode/internal/store"
 	"github.com/a-h/templ"
@@ -24,7 +24,7 @@ import (
 type Server struct {
 	store   *store.Store
 	cfg     config.Config
-	limiter *api.Limiter // shared across all syncs to respect 42's per-app caps
+	limiter *api42.Limiter // shared across all syncs to respect 42's per-app caps
 	jobs    *jobRegistry
 	secure  bool // mark cookies Secure (set when the redirect URI is https)
 }
@@ -34,7 +34,7 @@ func Serve(cfg config.Config, st *store.Store) error {
 	s := &Server{
 		store:   st,
 		cfg:     cfg,
-		limiter: api.NewLimiter(),
+		limiter: api42.NewLimiter(),
 		jobs:    newJobRegistry(),
 		secure:  strings.HasPrefix(cfg.RedirectURI, "https://"),
 	}

@@ -1,8 +1,4 @@
-// Package api is a minimal client for the 42 v2 API: bearer auth, request
-// throttling via a (possibly shared) limiter that respects both 42
-// per-application caps (per-second rate and hourly quota), 429/5xx backoff, and
-// pagination.
-package api
+package api42
 
 import (
 	"context"

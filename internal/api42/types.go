@@ -1,4 +1,4 @@
-package api
+package api42
 
 import "encoding/json"
 

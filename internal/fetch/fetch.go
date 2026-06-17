@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/EvAvKein/Fortytwode/internal/api"
+	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/auth"
 	"github.com/EvAvKein/Fortytwode/internal/config"
 	"github.com/EvAvKein/Fortytwode/internal/snapshot"
@@ -44,8 +44,8 @@ type Result struct {
 // afterMe (if non-nil) is called with the 42 user id as soon as /me identifies
 // the user, before any further requests; a non-nil error from it aborts the pull
 // (used by the web server to enforce the per-user sync cooldown cheaply).
-func Pull(ctx context.Context, client *api.Client, progress func(step, total int, name string), afterMe func(ftID int64) error) (Result, error) {
-	total := 2 + len(api.Collections) // me, titles_users, + each collection
+func Pull(ctx context.Context, client *api42.Client, progress func(step, total int, name string), afterMe func(ftID int64) error) (Result, error) {
+	total := 2 + len(api42.Collections) // me, titles_users, + each collection
 	step := 0
 	emit := func(name string) {
 		if progress != nil {
@@ -84,7 +84,7 @@ func Pull(ctx context.Context, client *api.Client, progress func(step, total int
 	}
 	snapshot["titles_users"] = titles
 
-	for _, ep := range api.Collections {
+	for _, ep := range api42.Collections {
 		emit(ep.File)
 		records, err := client.GetAll(ctx, fmt.Sprintf("users/%d/%s", me.ID, ep.Suffix))
 		if err != nil {
@@ -108,7 +108,7 @@ func pull(ctx context.Context, cfg config.Config) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	client := api.New(token, nil) // solo limiter: single user
+	client := api42.New(token, nil) // solo limiter: single user
 	return Pull(ctx, client, func(step, total int, name string) {
 		fmt.Printf("[%d/%d] %s ...\n", step+1, total, name)
 	}, nil)

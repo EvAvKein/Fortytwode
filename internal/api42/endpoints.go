@@ -1,4 +1,4 @@
-package api
+package api42
 
 // Endpoint is a personal, paginated sub-resource to pull for the authenticated
 // user. Suffix is appended to "users/<id>/" to form the request path; File is
