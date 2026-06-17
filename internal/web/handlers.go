@@ -36,12 +36,14 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 // handleNotFound renders the styled 404 for any unmatched page route.
 func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
-	renderStatus(w, r, http.StatusNotFound, pages.NotFound())
+	_, loggedIn := s.currentAccount(r)
+	renderStatus(w, r, http.StatusNotFound, pages.NotFound(loggedIn))
 }
 
 // handlePrivacy renders the privacy notice (linked from the footer).
 func (s *Server) handlePrivacy(w http.ResponseWriter, r *http.Request) {
-	render(w, r, pages.Privacy())
+	_, loggedIn := s.currentAccount(r)
+	render(w, r, pages.Privacy(loggedIn))
 }
 
 // handleHealth backs the container healthcheck: 200 when the database is
@@ -463,9 +465,10 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 // opted the profile public.
 func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	login := r.PathValue("login")
+	viewer, loggedIn := s.currentAccount(r)
 	acc, err := s.store.AccountByLogin(r.Context(), login)
 	if errors.Is(err, store.ErrNotFound) {
-		renderStatus(w, r, http.StatusNotFound, pages.ProfileNotFound(login))
+		renderStatus(w, r, http.StatusNotFound, pages.ProfileNotFound(login, loggedIn))
 		return
 	}
 	if err != nil {
@@ -473,7 +476,6 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	viewer, loggedIn := s.currentAccount(r)
 	owner := loggedIn && viewer.ID == acc.ID
 	if !owner && !loggedIn && !acc.IsPublic {
 		http.Redirect(w, r, "/login", http.StatusFound)

@@ -375,6 +375,19 @@ ol.evals {
 	margin-left: auto;
 }
 
+.site-header {
+	max-width: 1000px;
+	margin: 0 auto;
+	padding: 1rem 1rem 0;
+
+	.brand {
+		font-weight: 700;
+		font-size: 1.1rem;
+		text-decoration: none;
+		color: var(--text);
+	}
+}
+
 .nav {
 	width: clamp(400px, 100%, 800px);
 	margin: auto;

@@ -6,7 +6,6 @@ templ NotFound() {
 		<main class="centered">
 			<h1>404</h1>
 			<p>That page doesn't exist.</p>
-			<p><a class="button" href="/">Back home</a></p>
 		</main>
 	}
 }
@@ -19,7 +18,6 @@ templ ProfileNotFound(login string) {
 			<h1>No such profile</h1>
 			<p>There's no Fortytwode profile for <strong>{ login }</strong>.</p>
 			<a class="button bright" href="/api/sync">Get my 42 data</a>
-			<p class="muted"><a href="/">Back home</a></p>
 		</main>
 	}
 }
