@@ -14,12 +14,12 @@ const rawEval = `[{
 	"comment": "Solid defense, good answers.",
 	"final_mark": 105,
 	"flag": {"name": "Outstanding project", "positive": true},
-	"corrector": {"login": "myli-pen", "id": 1},
-	"correcteds": [{"login": "ekeinan", "id": 2}, {"login": "juaho", "id": 3}],
-	"truant": {"login": "ghost", "id": 99},
-	"feedbacks": [{"user": {"login": "ekeinan", "id": 2}, "rating": 5, "comment": "Very thorough."}],
+	"corrector": {"login": "corrector", "id": 1},
+	"correcteds": [{"login": "owner", "id": 2}, {"login": "student", "id": 3}],
+	"truant": {"login": "no-show", "id": 99},
+	"feedbacks": [{"user": {"login": "owner", "id": 2}, "rating": 5, "comment": "Very thorough."}],
 	"scale": {"guidelines_md": "secret guidelines", "languages": [{"name": "C"}]},
-	"team": {"name": "juaho's group", "project_id": 1337, "users": [{"login": "juaho", "id": 3}]}
+	"team": {"name": "student's group", "project_id": 1337, "users": [{"login": "student", "id": 3}]}
 }]`
 
 const rawEvalProjects = `[{"project": {"id": 1337, "name": "ft_transcendence"}}]`
@@ -31,7 +31,7 @@ func TestCurateStripsThirdPartyIdentities(t *testing.T) {
 	})
 
 	got := string(out["scale_teams_as_corrected"])
-	for _, login := range []string{"myli-pen", "juaho", "ghost", "ekeinan"} {
+	for _, login := range []string{"corrector", "student", "no-show", "owner"} {
 		if strings.Contains(got, login) {
 			t.Errorf("curated eval leaked a login %q: %s", login, got)
 		}
@@ -52,7 +52,7 @@ func TestCurateStripsThirdPartyIdentities(t *testing.T) {
 	if e.Project != "ft_transcendence" {
 		t.Errorf("project should resolve to ft_transcendence, got %q", e.Project)
 	}
-	// The default solo-project name ("juaho's group") is generic and dropped, not
+	// The default solo-project name ("student's group") is generic and dropped, not
 	// stored — so it can't leak the login either way.
 	if e.Team != "" {
 		t.Errorf("generic team name should be dropped, got %q", e.Team)
@@ -64,7 +64,7 @@ func TestCurateStripsThirdPartyIdentities(t *testing.T) {
 		t.Errorf("dropped feedback rating/comment: %+v", e)
 	}
 	if !e.Truant {
-		t.Error("truancy fact (truant id 99) should be recorded")
+		t.Error("truancy fact (no-show id 99) should be recorded")
 	}
 }
 
@@ -77,8 +77,8 @@ func TestCurateKeepsDistinctiveTeamName(t *testing.T) {
 		want string
 	}{
 		{"Bop it, socket, diff it", "Bop it, socket, diff it"},
-		{"juaho's group-2", ""},
-		{"Viet and Cristi's Team :D", ""},
+		{"student's group-2", ""},
+		{"Foo and Bar's Team :D", ""},
 	}
 	for _, tc := range cases {
 		raw := `[{"begin_at": "x", "flag": {}, "team": {"name": ` +
@@ -101,7 +101,7 @@ func mustJSON(s string) string {
 
 func TestCurateProfileAndTitles(t *testing.T) {
 	rawMe := `{
-		"login": "ekeinan", "displayname": "Eve K", "email": "e@v.e",
+		"login": "owner", "displayname": "Test User", "email": "t@e.st",
 		"wallet": 100, "correction_point": 7,
 		"cursus_users": [{"level": 9.5, "cursus": {"name": "42cursus"}, "skills": [{"name": "Rigor", "level": 4.2}]}],
 		"achievements": [{"name": "First blood", "tier": "easy", "description": "d"}],
@@ -114,7 +114,7 @@ func TestCurateProfileAndTitles(t *testing.T) {
 	if err := json.Unmarshal(out["me"], &p); err != nil {
 		t.Fatalf("unmarshal me: %v", err)
 	}
-	if p.Name != "Eve K" || p.Email != "e@v.e" || p.CorrectionPoint != 7 {
+	if p.Name != "Test User" || p.Email != "t@e.st" || p.CorrectionPoint != 7 {
 		t.Errorf("profile fields: %+v", p)
 	}
 	if len(p.Cursus) != 1 || p.Cursus[0].Level != 9.5 || len(p.Cursus[0].Skills) != 1 {
