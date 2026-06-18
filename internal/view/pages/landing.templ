@@ -6,9 +6,15 @@ templ Landing(viewerLogin string) {
 	@Layout("Fortytwode", viewerLogin) {
 		<main id="main" class="centered">
 			<h1>Fortytwode</h1>
+			<p class="muted">Pronounced like "Fortitude", "Forty-two-d"</p>
 			<p>
-				Pull all of your own data from the 42 API and download it as JSON.
-				Optionally create an account to keep a profile you can share.
+				Are you a <a href="https://42.fr/en/homepage/">42</a> student or alum?
+				<br/>
+				Wanna save your data outside the 42 system?
+			</p>
+			<p>
+				Get all your 42 data with the press of a button, and download it as JSON.
+				Optionally, create an account to create a profile you can share!
 			</p>
 			<a class="button bright" href="/api/sync">Get my 42 data</a>
 			<p class="muted">

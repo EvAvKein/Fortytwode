@@ -443,6 +443,11 @@ ol.evals {
 
 	h1 {
 		font-size: 1.6rem;
+
+		& + .muted {
+			margin-top: 0.25rem;
+			margin-bottom: 0.75rem;
+		}
 	}
 }
 
