@@ -25,25 +25,27 @@ import (
 // syncCooldown is the minimum time between full data fetches for one 42 user.
 const syncCooldown = 15 * time.Minute
 
-// handleHome shows the landing page, or redirects a logged-in user to their profile.
-func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+// viewerLogin returns the current viewer's 42 login, or empty string if not logged in.
+func (s *Server) viewerLogin(r *http.Request) string {
 	if acc, ok := s.currentAccount(r); ok {
-		http.Redirect(w, r, "/u/"+acc.FtLogin, http.StatusFound)
-		return
+		return acc.FtLogin
 	}
-	render(w, r, pages.Landing())
+	return ""
+}
+
+// handleHome shows the landing page.
+func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
+	render(w, r, pages.Landing(s.viewerLogin(r)))
 }
 
 // handleNotFound renders the styled 404 for any unmatched page route.
 func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
-	_, loggedIn := s.currentAccount(r)
-	renderStatus(w, r, http.StatusNotFound, pages.NotFound(loggedIn))
+	renderStatus(w, r, http.StatusNotFound, pages.NotFound(s.viewerLogin(r)))
 }
 
 // handlePrivacy renders the privacy notice (linked from the footer).
 func (s *Server) handlePrivacy(w http.ResponseWriter, r *http.Request) {
-	_, loggedIn := s.currentAccount(r)
-	render(w, r, pages.Privacy(loggedIn))
+	render(w, r, pages.Privacy(s.viewerLogin(r)))
 }
 
 // handleHealth backs the container healthcheck: 200 when the database is
@@ -90,6 +92,26 @@ func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
+// handleLogin42 starts a 42 OAuth flow for authentication only (no data sync).
+// It sets an intent cookie so the callback knows to look up an existing account
+// by 42 identity rather than starting a full sync.
+func (s *Server) handleLogin42(w http.ResponseWriter, r *http.Request) {
+	if s.rejectCrossSite(w, r) {
+		return
+	}
+	state := randomToken()
+	s.setCookie(w, stateCookie, state, 10*time.Minute)
+	s.setCookie(w, intentCookie, "login", 10*time.Minute)
+	authURL := config.AuthorizeURL + "?" + url.Values{
+		"client_id":     {s.cfg.ClientID},
+		"redirect_uri":  {s.cfg.RedirectURI},
+		"response_type": {"code"},
+		"scope":         {s.cfg.Scope},
+		"state":         {state},
+	}.Encode()
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
 // handleCallback validates the OAuth redirect, exchanges the code for a token,
 // and kicks off a background sync job. A logged-in user's job updates their
 // account (if the 42 identity matches); an anonymous job awaits sign-up,
@@ -106,6 +128,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.clearCookie(w, stateCookie)
+	intent := ""
+	if c, err := r.Cookie(intentCookie); err == nil {
+		intent = c.Value
+	}
+	s.clearCookie(w, intentCookie)
 	code := q.Get("code")
 	if code == "" {
 		http.Error(w, "no authorization code in callback", http.StatusBadRequest)
@@ -116,6 +143,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: token exchange failed: %v\n", err)
 		http.Error(w, "could not complete 42 authorization — please try syncing again", http.StatusBadGateway)
+		return
+	}
+
+	if intent == "login" {
+		s.handleLoginFlow(w, r, token)
 		return
 	}
 
@@ -217,12 +249,8 @@ func cooldownError(retryAfter time.Duration) error {
 
 // handleSyncing renders the progress page (which opens the SSE stream).
 func (s *Server) handleSyncing(w http.ResponseWriter, r *http.Request) {
-	acc, loggedIn := s.currentAccount(r)
-	login := ""
-	if loggedIn {
-		login = acc.FtLogin
-	}
-	render(w, r, pages.Syncing(loggedIn, login))
+	viewerLogin := s.viewerLogin(r)
+	render(w, r, pages.Syncing(viewerLogin, viewerLogin))
 }
 
 // handleSyncSignin signs in a returning user whose logged-out sync was matched
@@ -363,10 +391,10 @@ func (s *Server) jobFor(r *http.Request) (string, *job, bool) {
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.jobFor(r); !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true))
+		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true, ""))
 		return
 	}
-	render(w, r, pages.SignupForm("", false))
+	render(w, r, pages.SignupForm("", false, ""))
 }
 
 // handleSignup creates an account, attaching the just-synced job's data and 42
@@ -378,17 +406,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	password := r.FormValue("password")
 	if !validEmail(email) || len(password) < 8 {
-		render(w, r, pages.SignupForm("Enter a valid email and a password of at least 8 characters.", false))
+		render(w, r, pages.SignupForm("Enter a valid email and a password of at least 8 characters.", false, ""))
 		return
 	}
 	jobID, j, ok := s.jobFor(r)
 	if !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true))
+		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true, ""))
 		return
 	}
 	snap, ftID, ftLogin, done := j.result()
 	if !done {
-		render(w, r, pages.SignupForm("Your sync hasn't finished yet — wait for it to complete.", false))
+		render(w, r, pages.SignupForm("Your sync hasn't finished yet — wait for it to complete.", false, ""))
 		return
 	}
 	hash, err := hashPassword(password)
@@ -398,7 +426,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.store.CreateAccount(r.Context(), email, hash, ftID, ftLogin, snap)
 	if errors.Is(err, store.ErrDuplicate) {
-		render(w, r, pages.SignupForm("That email or 42 profile already has an account — try logging in.", false))
+		render(w, r, pages.SignupForm("That email or 42 profile already has an account — try logging in.", false, ""))
 		return
 	}
 	if err != nil {
@@ -415,7 +443,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	render(w, r, pages.LoginForm(""))
+	render(w, r, pages.LoginForm("", ""))
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -429,7 +457,41 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		hash = dummyHash // burn the same argon2 time so a missing email isn't a timing oracle
 	}
 	if err != nil || !verifyPassword(password, hash) {
-		render(w, r, pages.LoginForm("Invalid email or password."))
+		render(w, r, pages.LoginForm("Invalid email or password.", ""))
+		return
+	}
+	if err := s.startSession(w, r, acc.ID); err != nil {
+		http.Error(w, "could not start session", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/u/"+acc.FtLogin, http.StatusFound)
+}
+
+// handleLoginFlow completes a 42 OAuth login: it calls /v2/me to identify the
+// user, looks up their account by 42 id, and starts a session if found. If no
+// account exists for that 42 identity, the login form is shown with an error.
+func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token string) {
+	client := api42.New(token, s.limiter)
+	rawMe, err := client.GetOne(r.Context(), "me")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: /v2/me failed during 42 login: %v\n", err)
+		render(w, r, pages.LoginForm("Could not verify your 42 identity — please try again.", ""))
+		return
+	}
+	var me struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(rawMe, &me); err != nil || me.ID == 0 {
+		render(w, r, pages.LoginForm("Could not read your 42 identity — please try again.", ""))
+		return
+	}
+	acc, err := s.store.AccountByFtID(r.Context(), me.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		render(w, r, pages.LoginForm("No account found for this 42 identity — sign up first.", ""))
+		return
+	}
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
 		return
 	}
 	if err := s.startSession(w, r, acc.ID); err != nil {
@@ -468,7 +530,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	viewer, loggedIn := s.currentAccount(r)
 	acc, err := s.store.AccountByLogin(r.Context(), login)
 	if errors.Is(err, store.ErrNotFound) {
-		renderStatus(w, r, http.StatusNotFound, pages.ProfileNotFound(login, loggedIn))
+		renderStatus(w, r, http.StatusNotFound, pages.ProfileNotFound(login, s.viewerLogin(r)))
 		return
 	}
 	if err != nil {
@@ -485,7 +547,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	d := view.Build(acc.Data, owner, acc.Visibility)
 	d.Owner = owner
 	d.Login = acc.FtLogin
-	render(w, r, pages.Page(d))
+	render(w, r, pages.Page(d, s.viewerLogin(r)))
 }
 
 func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
@@ -494,7 +556,7 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
-	render(w, r, pages.Settings(s.settingsData(acc, false)))
+	render(w, r, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -517,7 +579,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc.IsPublic, acc.Visibility = isPublic, sections
-	render(w, r, pages.Settings(s.settingsData(acc, true)))
+	render(w, r, pages.Settings(s.settingsData(acc, true), acc.FtLogin))
 }
 
 // settingsData renders the current visibility state into the template's shape.

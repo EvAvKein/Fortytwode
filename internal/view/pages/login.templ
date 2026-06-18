@@ -1,6 +1,6 @@
 package pages
 
-// LoginForm is the email/password sign-in page; errMsg is shown when non-empty.
+// LoginForm is the sign-in page; errMsg is shown when non-empty.
 templ LoginForm(errMsg string, viewerLogin string) {
 	@Layout("Log in", viewerLogin) {
 		<main id="main" class="centered">
@@ -13,6 +13,8 @@ templ LoginForm(errMsg string, viewerLogin string) {
 				<label>Password <input type="password" name="password" required/></label>
 				<button type="submit" class="button">Log in</button>
 			</form>
+			<p class="auth-divider">or</p>
+			<a class="button ft" href="/api/auth/42/login">Log in with 42</a>
 		</main>
 	}
 }

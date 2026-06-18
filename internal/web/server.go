@@ -78,6 +78,7 @@ func (s *Server) routes() http.Handler {
 	api := http.NewServeMux()
 	api.HandleFunc("GET /sync", s.handleSync)
 	api.HandleFunc("GET /auth/42/callback", s.handleCallback) // OAuth redirect URI (see .env.example)
+	api.HandleFunc("GET /auth/42/login", s.handleLogin42)     // OAuth login-only flow (no sync)
 	api.HandleFunc("GET /syncing/signin", s.handleSyncSignin)
 	api.HandleFunc("GET /fetch/stream", s.handleStream)
 	api.HandleFunc("GET /download", s.handleDownloadRaw)

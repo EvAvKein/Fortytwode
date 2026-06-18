@@ -20,6 +20,7 @@ const (
 	sessionCookie = "sid"
 	jobCookie     = "job"
 	stateCookie   = "ftstate"
+	intentCookie  = "ftintent"
 	sessionTTL    = 30 * 24 * time.Hour
 )
 
