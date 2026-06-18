@@ -4,6 +4,7 @@ package pages
 templ LoginForm(errMsg string) {
 	@Layout("Log in") {
 		<main class="centered">
+		<main id="main" class="centered">
 			<h1>Log in</h1>
 			if errMsg != "" {
 				<p class="error">{ errMsg }</p>

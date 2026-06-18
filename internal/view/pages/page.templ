@@ -20,7 +20,7 @@ templ Page(d model.PageData) {
 				</form>
 			</nav>
 		}
-		<main>
+		<main id="main">
 			if d.Status != "" {
 				<div class={ "status", templ.KV("error", d.IsError) }>{ d.Status }</div>
 			}

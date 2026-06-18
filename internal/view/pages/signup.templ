@@ -5,7 +5,7 @@ package pages
 // replaced with a prompt to sync again.
 templ SignupForm(errMsg string, expired bool) {
 	@Layout("Sign up") {
-		<main class="centered">
+		<main id="main" class="centered">
 			<h1>Create an account</h1>
 			if expired {
 				<p class="error">{ errMsg }</p>

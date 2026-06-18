@@ -37,6 +37,30 @@ body {
 		sans-serif;
 }
 
+.skip-link {
+	position: absolute;
+	left: -9999px;
+	top: auto;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	padding: 0.5rem 1rem;
+	background: var(--accent);
+	color: var(--bg);
+	font-weight: 700;
+	text-decoration: none;
+	z-index: 1000;
+
+	&:focus {
+		position: fixed;
+		left: 1rem;
+		top: 1rem;
+		width: auto;
+		height: auto;
+		overflow: visible;
+	}
+}
+
 .footer {
 	position: absolute;
 	bottom: 0;
