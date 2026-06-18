@@ -2,9 +2,8 @@ package pages
 
 // Landing is the logged-out home page: the anonymous "get my data" CTA plus a
 // link to log in. (Sign-up is only offered after syncing, once there's data to keep.)
-templ Landing() {
-	@Layout("Fortytwode") {
-		<main class="centered">
+templ Landing(viewerLogin string) {
+	@Layout("Fortytwode", viewerLogin) {
 		<main id="main" class="centered">
 			<h1>Fortytwode</h1>
 			<p>

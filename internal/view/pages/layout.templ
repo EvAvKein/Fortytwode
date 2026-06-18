@@ -9,7 +9,7 @@ import "github.com/EvAvKein/Fortytwode/internal/view/assets"
 // script are loaded from the assets package as separate cacheable files (see that
 // package) rather than inlined, so editing them doesn't churn every page's HTML
 // and the pages can ship a strict script-src CSP.
-templ Layout(title string) {
+templ Layout(title string, viewerLogin string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -23,6 +23,9 @@ templ Layout(title string) {
 			<a href="#main" class="skip-link">Skip to content</a>
 			<header class="site-header">
 				<a href="/" class="brand">Fortytwode</a>
+				if viewerLogin != "" {
+					<a href={ templ.SafeURL("/u/" + viewerLogin) }>My Profile</a>
+				}
 			</header>
 			{ children... }
 			<footer class="footer muted">

@@ -7,8 +7,8 @@ import "github.com/EvAvKein/Fortytwode/internal/view/assets"
 // profile (logged-in re-sync), or — for an anonymous sync — sign-up, which the
 // script swaps for sign-in if the 42 identity turned out to be registered. The
 // script is loaded from the assets package (deferred, so the DOM it drives exists).
-templ Syncing(loggedIn bool, profileLogin string) {
-	@Layout("Syncing…") {
+templ Syncing(viewerLogin string, profileLogin string) {
+	@Layout("Syncing…", viewerLogin) {
 		<main id="main" class="centered">
 			<h1>Syncing your 42 data…</h1>
 			<div class="progress">
@@ -20,7 +20,7 @@ templ Syncing(loggedIn bool, profileLogin string) {
 				<a class="button bright" href="/api/download">Download raw data</a>
 				<a class="button bright" href="/api/download/curated">Download curated data</a>
 				<div>
-					if loggedIn {
+					if viewerLogin != "" {
 						<a href={ templ.SafeURL("/u/" + profileLogin) }>Profile</a>
 					} else {
 						<a id="signup-action" href="/signup">Sign up to keep your profile</a>

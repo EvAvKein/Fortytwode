@@ -4,8 +4,8 @@ import "github.com/EvAvKein/Fortytwode/internal/view/model"
 
 // Settings is the owner-only visibility page: the public opt-in plus a
 // per-section public/private toggle.
-templ Settings(d model.SettingsData) {
-	@Layout("Settings") {
+templ Settings(d model.SettingsData, viewerLogin string) {
+	@Layout("Settings", viewerLogin) {
 		<nav class="nav">
 			<a href={ templ.SafeURL("/u/" + d.Login) }>Back to profile</a>
 			<a href="/api/sync">Re-sync</a>

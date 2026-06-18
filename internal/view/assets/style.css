@@ -404,6 +404,9 @@ ol.evals {
 }
 
 .site-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
 	max-width: 1000px;
 	margin: 0 auto;
 	padding: 1rem 1rem 0;
@@ -411,7 +414,6 @@ ol.evals {
 	.brand {
 		font-weight: 700;
 		font-size: 1.1rem;
-		text-decoration: none;
 		color: var(--text);
 	}
 }

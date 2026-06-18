@@ -3,8 +3,8 @@ package pages
 // SignupForm creates an account from the just-synced 42 data; errMsg is shown
 // when non-empty. When expired is true the synced data is gone, so the form is
 // replaced with a prompt to sync again.
-templ SignupForm(errMsg string, expired bool) {
-	@Layout("Sign up") {
+templ SignupForm(errMsg string, expired bool, viewerLogin string) {
+	@Layout("Sign up", viewerLogin) {
 		<main id="main" class="centered">
 			<h1>Create an account</h1>
 			if expired {

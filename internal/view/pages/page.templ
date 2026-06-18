@@ -8,8 +8,8 @@ import (
 // Page is the dashboard/profile: an optional owner nav, the profile header, the
 // deep "Cursus & Skills" panel, then one collapsible curated panel per resource.
 // templ escapes every interpolated value, so no manual HTML-escaping is needed.
-templ Page(d model.PageData) {
-	@Layout("My 42 data") {
+templ Page(d model.PageData, viewerLogin string) {
+	@Layout("My 42 data", viewerLogin) {
 		if d.Owner {
 			<nav class="nav profile">
 				<a href="/api/sync">Re-sync</a>
