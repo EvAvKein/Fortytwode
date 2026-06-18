@@ -14,10 +14,7 @@ templ Page(d model.PageData, viewerLogin string) {
 			<nav class="nav profile">
 				<a href="/api/sync">Re-sync</a>
 				<a href="/api/download/saved">Download saved data</a>
-				<a href="/settings">Settings</a>
-				<form method="post" action="/api/logout" class="inline margin-left-auto">
-					<button type="submit" class="button">Log out</button>
-				</form>
+				<a href="/settings" class="margin-left-auto">Settings</a>
 			</nav>
 		}
 		<main id="main">
