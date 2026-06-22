@@ -16,13 +16,13 @@ templ Syncing(viewerLogin string, profileLogin string) {
 			</div>
 			<p id="label" class="muted">Starting…</p>
 			<p id="error" class="error hidden"></p>
-			<div id="sync-success-actions" class="spaced-apart hidden">
-				<a class="button bright" href="/api/download">Download raw data</a>
-				<a class="button bright" href="/api/download/curated">Download curated data</a>
-				<div>
-					if viewerLogin != "" {
-						<a href={ templ.SafeURL("/u/" + profileLogin) }>Profile</a>
-					} else {
+			<div id="sync-success-actions" class="hidden">
+				<div class="spaced-apart">
+					<a class="button bright" href="/api/download">Download raw data</a>
+					<a class="button bright" href="/api/download/curated">Download curated data</a>
+				</div>
+				<div class="spaced-apart">
+					if viewerLogin == "" {
 						<a id="signup-action" href="/signup">Sign up to keep your profile</a>
 						<a id="signin-action" class="hidden" href="/api/syncing/signin">Account detected — sign in</a>
 					}
