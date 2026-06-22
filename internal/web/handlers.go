@@ -274,7 +274,7 @@ func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
-	http.Redirect(w, r, "/u/"+login, http.StatusFound)
+	http.Redirect(w, r, "/users/"+login, http.StatusFound)
 }
 
 // handleStream streams the current job's progress as Server-Sent Events.
@@ -439,7 +439,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/u/"+ftLogin, http.StatusFound)
+	http.Redirect(w, r, "/users/"+ftLogin, http.StatusFound)
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
@@ -464,7 +464,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/u/"+acc.FtLogin, http.StatusFound)
+	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
 }
 
 // handleLoginFlow completes a 42 OAuth login: it calls /v2/me to identify the
@@ -498,7 +498,7 @@ func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token s
 		http.Error(w, "could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/u/"+acc.FtLogin, http.StatusFound)
+	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {

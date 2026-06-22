@@ -80,7 +80,7 @@ The Postgres schema is applied on the first connection.
 The web flow:
 1. Open `/`
 2. **Get my 42 data** authorizes with 42 and runs a sync with a live progress bar
-3. Download the result as **raw** JSON (the unmodified 42 API snapshot) or **curated** JSON (the minimised subset storing would keep), or **Sign up** to keep a profile at `/u/<login>`.
+3. Download the result as **raw** JSON (the unmodified 42 API snapshot) or **curated** JSON (the minimised subset storing would keep), or **Sign up** to keep a profile at `/users/<login>`.
 
 Logged-in owners can re-sync, download their **saved** data (exactly the curated snapshot in the database), tweak per-section visibility in `/settings`, and opt their profile into being viewable without an account.
 

@@ -24,7 +24,7 @@ templ Layout(title string, viewerLogin string) {
 			<header class="site-header">
 				<a href="/" class="brand">Fortytwode</a>
 				if viewerLogin != "" {
-					<a href={ templ.SafeURL("/u/" + viewerLogin) }>My Profile</a>
+					<a href={ templ.SafeURL("/users/" + viewerLogin) }>My Profile</a>
 				}
 			</header>
 			{ children... }

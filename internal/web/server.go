@@ -100,7 +100,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /login", s.handleLoginForm)
 	mux.HandleFunc("GET /settings", s.handleSettingsForm)
 	mux.HandleFunc("GET /privacy", s.handlePrivacy)
-	mux.HandleFunc("GET /u/{login}", s.handleProfile)
+	mux.HandleFunc("GET /users/{login}", s.handleProfile)
 	registerAssets(mux) // fingerprinted /static/* stylesheet + scripts
 	mux.Handle("/api/", http.StripPrefix("/api", api))
 	mux.HandleFunc("/", s.handleNotFound)

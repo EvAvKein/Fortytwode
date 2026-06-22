@@ -10,7 +10,7 @@ templ NotFound(viewerLogin string) {
 	}
 }
 
-// ProfileNotFound is the 404 for /u/{login} when no such account exists. login is
+// ProfileNotFound is the 404 for /users/{login} when no such account exists. login is
 // the requested 42 login; templ HTML-escapes the interpolation.
 templ ProfileNotFound(login string, viewerLogin string) {
 	@Layout("Profile not found", viewerLogin) {

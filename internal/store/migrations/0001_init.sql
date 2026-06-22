@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     email         TEXT   UNIQUE NOT NULL,
     password_hash TEXT   NOT NULL,
     ft_id         BIGINT UNIQUE NOT NULL,     -- 42 user id (immutable binding)
-    ft_login      TEXT   UNIQUE NOT NULL,     -- public URL key: /u/<ft_login>
+    ft_login      TEXT   UNIQUE NOT NULL,     -- public URL key: /users/<ft_login>
     data          JSONB  NOT NULL,            -- snapshot map: { "me": {...}, ... }
     fetched_at    TIMESTAMPTZ NOT NULL,       -- when the snapshot was last synced
     is_public     BOOLEAN NOT NULL DEFAULT false,  -- viewable without an account

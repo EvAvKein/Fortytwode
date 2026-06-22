@@ -191,7 +191,7 @@ func TestRoutes(t *testing.T) {
 		want         int
 	}{
 		{"GET", "/nope", http.StatusNotFound},               // unmatched page → styled 404
-		{"POST", "/u/anyone", http.StatusNotFound},          // wrong method on a page route → friendly 404
+		{"POST", "/users/anyone", http.StatusNotFound},      // wrong method on a page route → friendly 404
 		{"GET", "/api/logout", http.StatusMethodNotAllowed}, // logout is POST-only → 405 preserved
 		{"POST", "/api/sync", http.StatusMethodNotAllowed},  // sync is GET-only → 405
 		{"GET", "/api/nope", http.StatusNotFound},           // unknown API path → plain 404

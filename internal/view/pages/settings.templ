@@ -7,7 +7,7 @@ import "github.com/EvAvKein/Fortytwode/internal/view/model"
 templ Settings(d model.SettingsData, viewerLogin string) {
 	@Layout("Settings", viewerLogin) {
 		<nav class="nav">
-			<a href={ templ.SafeURL("/u/" + d.Login) }>Back to profile</a>
+			<a href={ templ.SafeURL("/users/" + d.Login) }>Back to profile</a>
 			<a href="/api/sync">Re-sync</a>
 			<form method="post" action="/api/logout" class="inline margin-left-auto">
 				<button type="submit" class="button">Log out</button>
