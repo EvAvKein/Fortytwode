@@ -65,6 +65,14 @@ schema:
 down:
 	docker compose down
 
+# volume-rm: remove the data volume (run after `make down` to ensure containers are stopped)
+volume-rm:
+	docker volume rm fortytwode_pgdata
+
+# prune: remove all containers and locally-built images for this project's compose
+prune:
+	docker compose down --rmi local
+
 # logs: follow the stack's logs
 logs:
 	docker compose logs -f
@@ -112,4 +120,4 @@ clean:
 test:
 	go test ./...
 
-.PHONY: build generate dev prod deploy migrate backup schema down logs fetch fetch-curated fmt vet vuln check tidy clean test
+.PHONY: build generate dev prod deploy migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
