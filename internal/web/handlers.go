@@ -52,7 +52,7 @@ func (s *Server) handlePrivacy(w http.ResponseWriter, r *http.Request) {
 // reachable, 503 otherwise.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if err := s.store.Ping(r.Context()); err != nil {
-		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		http.Error(w, "Database unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
@@ -119,12 +119,12 @@ func (s *Server) handleLogin42(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if e := q.Get("error"); e != "" {
-		http.Error(w, "authorization denied: "+e, http.StatusBadRequest)
+		http.Error(w, "Authorization denied: "+e, http.StatusBadRequest)
 		return
 	}
 	stateC, err := r.Cookie(stateCookie)
 	if err != nil || q.Get("state") == "" || q.Get("state") != stateC.Value {
-		http.Error(w, "OAuth state mismatch — please try syncing again", http.StatusBadRequest)
+		http.Error(w, "OAuth state mismatch, please try syncing again", http.StatusBadRequest)
 		return
 	}
 	s.clearCookie(w, stateCookie)
@@ -142,7 +142,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.ExchangeCode(s.cfg, code)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: token exchange failed: %v\n", err)
-		http.Error(w, "could not complete 42 authorization — please try syncing again", http.StatusBadGateway)
+		http.Error(w, "Could not complete 42 authorization, please try syncing again", http.StatusBadGateway)
 		return
 	}
 
@@ -221,7 +221,7 @@ func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int6
 		}
 		if claimAccountID != 0 {
 			if res.FtID != expectFtID {
-				j.fail(fmt.Errorf("you authorized as a different 42 user than this account; re-sync as the right user, or log out and sign up a new account"))
+				j.fail(fmt.Errorf("You authorized as a different 42 user than this account. Re-sync as the right user, or log out and sign up a new account"))
 				return
 			}
 			if err := s.store.UpdateSnapshot(ctx, claimAccountID, res.Snapshot); err != nil {
@@ -244,7 +244,7 @@ func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int6
 // reporting the remaining wait rounded up to whole minutes.
 func cooldownError(retryAfter time.Duration) error {
 	mins := max(1, int((retryAfter+time.Minute-time.Nanosecond)/time.Minute))
-	return fmt.Errorf("you synced recently — try again in about %d minute(s)", mins)
+	return fmt.Errorf("You synced recently. Try again in about %d minute(s)", mins)
 }
 
 // handleSyncing renders the progress page (which opens the SSE stream).
@@ -269,7 +269,7 @@ func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.startSession(w, r, id); err != nil {
-		http.Error(w, "could not start session", http.StatusInternalServerError)
+		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
 	s.jobs.delete(jobID)
@@ -281,17 +281,17 @@ func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	c, err := r.Cookie(jobCookie)
 	if err != nil {
-		http.Error(w, "no sync in progress", http.StatusNotFound)
+		http.Error(w, "No sync in progress", http.StatusNotFound)
 		return
 	}
 	j, ok := s.jobs.get(c.Value)
 	if !ok {
-		http.Error(w, "no sync in progress", http.StatusNotFound)
+		http.Error(w, "No sync in progress", http.StatusNotFound)
 		return
 	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -336,7 +336,7 @@ func (s *Server) handleDownloadRaw(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	http.Error(w, "no raw data to download — re-sync your 42 data (the raw copy isn't stored)", http.StatusNotFound)
+	http.Error(w, "No raw data to download: Re-sync your 42 data", http.StatusNotFound)
 }
 
 // handleDownloadSaved serves the logged-in account's persisted snapshot — exactly
@@ -363,7 +363,7 @@ func (s *Server) handleDownloadCurated(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	http.Error(w, "no sync to download — sync your 42 data first", http.StatusNotFound)
+	http.Error(w, "No data to download: Re-sync your 42 data", http.StatusNotFound)
 }
 
 // writeJSONDownload sends a snapshot map as a pretty-printed JSON file attachment.
@@ -391,7 +391,7 @@ func (s *Server) jobFor(r *http.Request) (string, *job, bool) {
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.jobFor(r); !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true, ""))
+		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again", true, ""))
 		return
 	}
 	render(w, r, pages.SignupForm("", false, ""))
@@ -406,17 +406,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	password := r.FormValue("password")
 	if !validEmail(email) || len(password) < 8 {
-		render(w, r, pages.SignupForm("Enter a valid email and a password of at least 8 characters.", false, ""))
+		render(w, r, pages.SignupForm("Enter a valid email and a password of at least 8 characters", false, ""))
 		return
 	}
 	jobID, j, ok := s.jobFor(r)
 	if !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again.", true, ""))
+		render(w, r, pages.SignupForm("Your sync expired. Please re-sync your 42 data", true, ""))
 		return
 	}
 	snap, ftID, ftLogin, done := j.result()
 	if !done {
-		render(w, r, pages.SignupForm("Your sync hasn't finished yet — wait for it to complete.", false, ""))
+		render(w, r, pages.SignupForm("Your sync hasn't finished yet, wait for it to complete", false, ""))
 		return
 	}
 	hash, err := hashPassword(password)
@@ -426,17 +426,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.store.CreateAccount(r.Context(), email, hash, ftID, ftLogin, snap)
 	if errors.Is(err, store.ErrDuplicate) {
-		render(w, r, pages.SignupForm("That email or 42 profile already has an account — try logging in.", false, ""))
+		render(w, r, pages.SignupForm("This email or 42 profile already has an account, try logging in", false, ""))
 		return
 	}
 	if err != nil {
-		http.Error(w, "could not create account", http.StatusInternalServerError)
+		http.Error(w, "Could not create account", http.StatusInternalServerError)
 		return
 	}
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
 	if err := s.startSession(w, r, id); err != nil {
-		http.Error(w, "could not start session", http.StatusInternalServerError)
+		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/users/"+ftLogin, http.StatusFound)
@@ -461,7 +461,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.startSession(w, r, acc.ID); err != nil {
-		http.Error(w, "could not start session", http.StatusInternalServerError)
+		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
@@ -474,28 +474,28 @@ func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token s
 	client := api42.New(token, s.limiter)
 	rawMe, err := client.GetOne(r.Context(), "me")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: /v2/me failed during 42 login: %v\n", err)
-		render(w, r, pages.LoginForm("Could not verify your 42 identity — please try again.", ""))
+		fmt.Fprintf(os.Stderr, "Warning: /v2/me failed during 42 login: %v\n", err)
+		render(w, r, pages.LoginForm("Could not verify your 42 identity, please try again", ""))
 		return
 	}
 	var me struct {
 		ID int64 `json:"id"`
 	}
 	if err := json.Unmarshal(rawMe, &me); err != nil || me.ID == 0 {
-		render(w, r, pages.LoginForm("Could not read your 42 identity — please try again.", ""))
+		render(w, r, pages.LoginForm("Could not read your 42 identity, please try again", ""))
 		return
 	}
 	acc, err := s.store.AccountByFtID(r.Context(), me.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		render(w, r, pages.LoginForm("No account found for this 42 identity — sign up first.", ""))
+		render(w, r, pages.LoginForm("No account found for this 42 identity. To create an account, load your 42 data", ""))
 		return
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 	if err := s.startSession(w, r, acc.ID); err != nil {
-		http.Error(w, "could not start session", http.StatusInternalServerError)
+		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
@@ -515,7 +515,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteAccount(r.Context(), acc.ID); err != nil {
-		http.Error(w, "could not delete account", http.StatusInternalServerError)
+		http.Error(w, "Could not delete account", http.StatusInternalServerError)
 		return
 	}
 	s.endSession(w, r)
@@ -534,7 +534,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "database error", http.StatusInternalServerError)
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 
@@ -566,7 +566,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
+		http.Error(w, "Bad form", http.StatusBadRequest)
 		return
 	}
 	isPublic := r.FormValue("is_public") == "on"
@@ -575,7 +575,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		sections[t.Key] = r.FormValue("section_"+t.Key) == "on"
 	}
 	if err := s.store.UpdateVisibility(r.Context(), acc.ID, isPublic, sections); err != nil {
-		http.Error(w, "could not save settings", http.StatusInternalServerError)
+		http.Error(w, "Could not save settings", http.StatusInternalServerError)
 		return
 	}
 	acc.IsPublic, acc.Visibility = isPublic, sections
