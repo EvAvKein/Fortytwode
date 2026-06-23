@@ -24,22 +24,34 @@ import (
 // ----------------------------------------------------------------------------
 
 // ToggleableSections is the ordered set of resource panels an owner can mark
-// public or private. The keys match the Build() add() calls and the snapshot
-// resource names.
+// public or private. The keys match the Build() includeSection calls and the
+// snapshot resource names.
 var ToggleableSections = []struct{ Key, Label string }{
+	{"points", "Points remaining"},
+	{"coalitions", "Coalition"},
+	{"contact", "Contact"},
 	{"projects_users", "Projects"},
-	{"scale_teams_as_corrector", "Evaluations given"},
 	{"scale_teams_as_corrected", "Evaluations received"},
-	{"locations", "Locations"},
-	{"events_users", "Events"},
+	{"scale_teams_as_corrector", "Evaluations given"},
+	{"correction_point_historics", "Correction points"},
 	{"quests_users", "Quests"},
 	{"titles_users", "Titles"},
-	{"correction_point_historics", "Correction points"},
+	{"achievements", "Achievements"},
+	{"events_users", "Events"},
+	{"locations", "Locations"},
+	{"skills", "Skills"},
 }
 
 // sectionPrivateByDefault lists sections hidden from non-owners unless the owner
 // explicitly opts them public.
-var sectionPrivateByDefault = map[string]bool{"locations": true}
+var sectionPrivateByDefault = map[string]bool{
+	"locations":                  true,
+	"skills":                     true,
+	"contact":                    true,
+	"points":                     true,
+	"correction_point_historics": true,
+	"events_users":               true,
+}
 
 // SectionPublic reports whether a section is visible to non-owners, honouring the
 // account's explicit overrides over the built-in defaults.
@@ -48,6 +60,19 @@ func SectionPublic(vis map[string]bool, key string) bool {
 		return v
 	}
 	return !sectionPrivateByDefault[key]
+}
+
+// includeSection sets a panel pointer when the section has data and the viewer
+// may see it. The owner also sees private sections, badged so they know what
+// others can't.
+func includeSection[T any](dst **T, key string, owner bool, vis map[string]bool, build func() (T, bool), setPrivate func(*T, bool)) {
+	public := SectionPublic(vis, key)
+	sec, ok := build()
+	if !ok || !(owner || public) {
+		return
+	}
+	setPrivate(&sec, owner && !public)
+	*dst = &sec
 }
 
 // Build assembles the dashboard from a curated snapshot. When owner is false the
@@ -59,39 +84,49 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 	}
 
 	d := model.PageData{
-		Profile:      buildProfile(me, load[snapshot.Coalition](snaps, "coalitions"), owner),
-		CursusSkills: buildCursusSkills(me),
+		Profile: buildProfile(me, load[snapshot.Coalition](snaps, "coalitions"), owner, vis),
 	}
 
-	// add includes a section when it has data and the viewer may see it. The
-	// owner also sees private sections, badged so they know what others can't.
-	add := func(key string, build func() (model.Section, bool)) {
-		public := SectionPublic(vis, key)
-		if sec, ok := build(); ok && (owner || public) {
-			sec.Private = owner && !public
-			d.Sections = append(d.Sections, sec)
-		}
-	}
-	add("projects_users", func() (model.Section, bool) { return buildProjects(load[snapshot.Project](snaps, "projects_users")) })
-	add("scale_teams_as_corrector", func() (model.Section, bool) {
-		return buildEvals("Evaluations given", true, load[snapshot.Eval](snaps, "scale_teams_as_corrector"))
-	})
-	add("scale_teams_as_corrected", func() (model.Section, bool) {
+	includeSection(&d.Sections.Contact, "contact", owner, vis, func() (model.ContactSection, bool) { return buildContact(me) },
+		func(s *model.ContactSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Projects, "projects_users", owner, vis, func() (model.TableSection, bool) {
+		return buildProjects(load[snapshot.Project](snaps, "projects_users"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.EvalsReceived, "scale_teams_as_corrected", owner, vis, func() (model.EvalSection, bool) {
 		return buildEvals("Evaluations received", false, load[snapshot.Eval](snaps, "scale_teams_as_corrected"))
-	})
-	add("locations", func() (model.Section, bool) { return buildLocations(load[snapshot.Location](snaps, "locations")) })
-	add("events_users", func() (model.Section, bool) { return buildEvents(load[snapshot.Event](snaps, "events_users")) })
-	add("quests_users", func() (model.Section, bool) { return buildQuests(load[snapshot.Quest](snaps, "quests_users")) })
-	add("titles_users", func() (model.Section, bool) { return buildTitles(load[snapshot.Title](snaps, "titles_users")) })
-	add("correction_point_historics", func() (model.Section, bool) {
-		return buildCorrectionPoints(load[snapshot.CorrectionPoint](snaps, "correction_point_historics"))
-	})
+	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
-	// Achievements are the owner's own badges (no third-party data), so they're
-	// shown to every viewer of the profile, like the cursus panel — not toggled.
-	if sec, ok := buildAchievements(me); ok {
-		d.Sections = append(d.Sections, sec)
-	}
+	includeSection(&d.Sections.EvalsGiven, "scale_teams_as_corrector", owner, vis, func() (model.EvalSection, bool) {
+		return buildEvals("Evaluations given", true, load[snapshot.Eval](snaps, "scale_teams_as_corrector"))
+	}, func(s *model.EvalSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.CorrectionPoints, "correction_point_historics", owner, vis, func() (model.TableSection, bool) {
+		return buildCorrectionPoints(load[snapshot.CorrectionPoint](snaps, "correction_point_historics"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Quests, "quests_users", owner, vis, func() (model.TableSection, bool) {
+		return buildQuests(load[snapshot.Quest](snaps, "quests_users"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Titles, "titles_users", owner, vis, func() (model.TableSection, bool) {
+		return buildTitles(load[snapshot.Title](snaps, "titles_users"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Achievements, "achievements", owner, vis, func() (model.TableSection, bool) { return buildAchievements(me) },
+		func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Events, "events_users", owner, vis, func() (model.TableSection, bool) {
+		return buildEvents(load[snapshot.Event](snaps, "events_users"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Locations, "locations", owner, vis, func() (model.TableSection, bool) {
+		return buildLocations(load[snapshot.Location](snaps, "locations"))
+	}, func(s *model.TableSection, p bool) { s.Private = p })
+
+	includeSection(&d.Sections.Skills, "skills", owner, vis, func() (model.SkillsSection, bool) { return buildSkills(me) },
+		func(s *model.SkillsSection, p bool) { s.Private = p })
 
 	return d
 }
@@ -114,60 +149,76 @@ func load[T any](snaps map[string]json.RawMessage, name string) []T {
 // Header + deep sections
 // ----------------------------------------------------------------------------
 
-func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner bool) *model.Profile {
+func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner bool, vis map[string]bool) *model.Profile {
 	prof := &model.Profile{
 		Name:     cmp.Or(p.Name, "Unknown"),
 		Login:    p.Login,
 		ImageURL: p.ImageURL,
 	}
 
-	add := func(key, value string) {
-		if value != "" {
-			prof.Rows = append(prof.Rows, model.KV{Key: key, Value: value})
-		}
+	if p.Campus != "" {
+		prof.PrimaryStats = append(prof.PrimaryStats, model.KV{Key: "Campus", Value: p.Campus})
 	}
-	if owner {
-		add("Email", p.Email) // email is owner-only
+	pool := strings.TrimSpace(p.PoolMonth + " " + p.PoolYear)
+	if pool != "" {
+		prof.PrimaryStats = append(prof.PrimaryStats, model.KV{Key: "Selection pool", Value: ucFirst(pool)})
 	}
-	add("Campus", p.Campus)
-	add("Wallet", strconv.Itoa(p.Wallet))
-	add("Eval points", strconv.Itoa(p.CorrectionPoint))
-	add("Pool", strings.TrimSpace(p.PoolMonth+" "+p.PoolYear))
 
-	if len(coalitions) > 0 {
+	points := &model.PointsCard{Eval: p.CorrectionPoint, Wallet: p.Wallet}
+	public := SectionPublic(vis, "points")
+	if owner || public {
+		points.Private = owner && !public
+		prof.Points = points
+	}
+
+	cursus := append([]snapshot.Cursus(nil), p.Cursus...)
+	sort.Slice(cursus, func(i, j int) bool { return cursus[i].Level > cursus[j].Level })
+	for i, cu := range cursus {
+		prof.Cursus = append(prof.Cursus, model.CursusRow{
+			Name:   cu.Name,
+			Grade:  orDash(cu.Grade),
+			Level:  fmt.Sprintf("Level %.2f", cu.Level),
+			Latest: i == 0,
+		})
+	}
+
+	public = SectionPublic(vis, "coalitions")
+	if (owner || public) && len(coalitions) > 0 {
 		c := coalitions[0]
 		prof.Coalition = &model.CoalitionBadge{
-			Name:  c.Name,
-			Score: strconv.Itoa(c.Score),
-			Color: cmp.Or(c.Color, "#00babc"),
+			Name:    c.Name,
+			Score:   commaInt(c.Score),
+			Color:   cmp.Or(c.Color, "#00babc"),
+			Private: owner && !public,
 		}
 	}
 	return prof
 }
 
-func buildCursusSkills(p snapshot.Profile) *model.CursusSkills {
+func buildContact(p snapshot.Profile) (model.ContactSection, bool) {
+	if p.Email == "" {
+		return model.ContactSection{}, false
+	}
+	return model.ContactSection{PanelHeader: model.PanelHeader{Title: "Contact"}, Email: p.Email}, true
+}
+
+func buildSkills(p snapshot.Profile) (model.SkillsSection, bool) {
 	if len(p.Cursus) == 0 {
-		return nil
+		return model.SkillsSection{}, false
 	}
-	sec := model.Section{
-		Title:   "Cursus",
-		Count:   len(p.Cursus),
-		Columns: []string{"Cursus", "Level", "Grade", "Blackhole"},
+	skills := topSkills(p.Cursus)
+	if len(skills) == 0 {
+		return model.SkillsSection{}, false
 	}
-	for _, cu := range p.Cursus {
-		sec.Rows = append(sec.Rows, []model.Cell{
-			{Text: cu.Name},
-			{Text: fmt.Sprintf("%.2f", cu.Level)},
-			{Text: orDash(cu.Grade)},
-			{Text: orDash(ymd(cu.BlackholedAt)), Tone: toneIf(cu.BlackholedAt != "", "bad")},
-		})
-	}
-	return &model.CursusSkills{Cursus: sec, Skills: topSkills(p.Cursus, 12)}
+	return model.SkillsSection{
+		PanelHeader: model.PanelHeader{Title: "Skills", Count: len(skills)},
+		Skills:      skills,
+	}, true
 }
 
 // topSkills aggregates skills across cursus (taking each skill's highest level),
-// returns the top n, and scales each bar relative to the strongest skill.
-func topSkills(cursus []snapshot.Cursus, n int) []model.SkillBar {
+// returns all of them, and scales each bar relative to the strongest skill.
+func topSkills(cursus []snapshot.Cursus) []model.SkillBar {
 	best := map[string]float64{}
 	for _, cu := range cursus {
 		for _, s := range cu.Skills {
@@ -181,14 +232,11 @@ func topSkills(cursus []snapshot.Cursus, n int) []model.SkillBar {
 	}
 	var all []skill
 	top := 0.0
-	for name, lvl := range best {
-		all = append(all, skill{name, lvl})
-		top = max(top, lvl)
+	for name, level := range best {
+		all = append(all, skill{name, level})
+		top = max(top, level)
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].level > all[j].level })
-	if len(all) > n {
-		all = all[:n]
-	}
 
 	bars := make([]model.SkillBar, len(all))
 	for i, s := range all {
@@ -200,19 +248,24 @@ func topSkills(cursus []snapshot.Cursus, n int) []model.SkillBar {
 			Name:  s.name,
 			Level: fmt.Sprintf("%.2f", s.level),
 			Style: fmt.Sprintf("width:%d%%", pct),
+			Pct:   pct,
+			Index: i + 1,
 		}
 	}
 	return bars
 }
 
-func buildProjects(ps []snapshot.Project) (model.Section, bool) {
+func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 	if len(ps) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
 	sort.Slice(ps, func(i, j int) bool { return ps[i].When > ps[j].When })
 
 	passed, failed := 0, 0
-	sec := model.Section{Title: "Projects", Count: len(ps), Columns: []string{"Project", "Mark", "Result", "When"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Projects", Count: len(ps)},
+		Columns:     []string{"Project", "Mark", "Result", "When"},
+	}
 	for _, p := range ps {
 		result := model.Cell{Text: p.Status, Tone: "muted"}
 		if p.Status == "finished" {
@@ -237,13 +290,13 @@ func buildProjects(ps []snapshot.Project) (model.Section, bool) {
 // never stored, so instead of naming the other party each card surfaces the feedback
 // that concerns the owner: on "received" the corrector's write-up (Comment); on "given"
 // the rating + comment students left on the owner's correction. Truancy is flagged.
-func buildEvals(title string, given bool, evs []snapshot.Eval) (model.Section, bool) {
+func buildEvals(title string, given bool, evs []snapshot.Eval) (model.EvalSection, bool) {
 	if len(evs) == 0 {
-		return model.Section{}, false
+		return model.EvalSection{}, false
 	}
 	sort.Slice(evs, func(i, j int) bool { return evs[i].BeginAt > evs[j].BeginAt })
 
-	sec := model.Section{Title: title, Count: len(evs)}
+	sec := model.EvalSection{PanelHeader: model.PanelHeader{Title: title, Count: len(evs)}}
 	for _, e := range evs {
 		feedback, rating := e.Comment, ""
 		if given {
@@ -280,9 +333,9 @@ func buildEvals(title string, given bool, evs []snapshot.Eval) (model.Section, b
 // Light sections
 // ----------------------------------------------------------------------------
 
-func buildLocations(locs []snapshot.Location) (model.Section, bool) {
+func buildLocations(locs []snapshot.Location) (model.TableSection, bool) {
 	if len(locs) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
 	sort.Slice(locs, func(i, j int) bool { return locs[i].BeginAt > locs[j].BeginAt })
 
@@ -293,7 +346,10 @@ func buildLocations(locs []snapshot.Location) (model.Section, bool) {
 		}
 	}
 
-	sec := model.Section{Title: "Locations", Count: len(locs), Columns: []string{"Host", "Begin", "End", "Duration"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Locations", Count: len(locs)},
+		Columns:     []string{"Host", "Begin", "End", "Duration"},
+	}
 	for _, l := range locs {
 		end, dur := "active", "—"
 		if l.EndAt != nil {
@@ -325,13 +381,16 @@ func sessionDur(l snapshot.Location) (time.Duration, bool) {
 	return end.Sub(begin), true
 }
 
-func buildEvents(evs []snapshot.Event) (model.Section, bool) {
+func buildEvents(evs []snapshot.Event) (model.TableSection, bool) {
 	if len(evs) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
 	sort.Slice(evs, func(i, j int) bool { return evs[i].BeginAt > evs[j].BeginAt })
 
-	sec := model.Section{Title: "Events", Count: len(evs), Columns: []string{"Event", "Kind", "When"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Events", Count: len(evs)},
+		Columns:     []string{"Event", "Kind", "When"},
+	}
 	for _, e := range evs {
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: e.Name},
@@ -343,12 +402,15 @@ func buildEvents(evs []snapshot.Event) (model.Section, bool) {
 	return sec, true
 }
 
-func buildQuests(qs []snapshot.Quest) (model.Section, bool) {
+func buildQuests(qs []snapshot.Quest) (model.TableSection, bool) {
 	if len(qs) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
 	validated := 0
-	sec := model.Section{Title: "Quests", Count: len(qs), Columns: []string{"Quest", "Validated", "%"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Quests", Count: len(qs)},
+		Columns:     []string{"Quest", "Validated", "%"},
+	}
 	for _, q := range qs {
 		v := model.Cell{Text: "—", Tone: "muted"}
 		if q.ValidatedAt != nil {
@@ -364,11 +426,14 @@ func buildQuests(qs []snapshot.Quest) (model.Section, bool) {
 	return sec, true
 }
 
-func buildTitles(titles []snapshot.Title) (model.Section, bool) {
+func buildTitles(titles []snapshot.Title) (model.TableSection, bool) {
 	if len(titles) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
-	sec := model.Section{Title: "Titles", Count: len(titles), Columns: []string{"Title", "Selected"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Titles", Count: len(titles)},
+		Columns:     []string{"Title", "Selected"},
+	}
 	for _, t := range titles {
 		selected := model.Cell{}
 		if t.Selected {
@@ -383,13 +448,16 @@ func buildTitles(titles []snapshot.Title) (model.Section, bool) {
 	return sec, true
 }
 
-func buildCorrectionPoints(hs []snapshot.CorrectionPoint) (model.Section, bool) {
+func buildCorrectionPoints(hs []snapshot.CorrectionPoint) (model.TableSection, bool) {
 	if len(hs) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
 	sort.Slice(hs, func(i, j int) bool { return hs[i].CreatedAt > hs[j].CreatedAt })
 
-	sec := model.Section{Title: "Correction points", Count: len(hs), Columns: []string{"Reason", "Δ", "Total", "When"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Correction points", Count: len(hs)},
+		Columns:     []string{"Reason", "Δ", "Total", "When"},
+	}
 	for _, h := range hs {
 		delta, tone := strconv.Itoa(h.Sum), "muted"
 		switch {
@@ -409,11 +477,14 @@ func buildCorrectionPoints(hs []snapshot.CorrectionPoint) (model.Section, bool) 
 	return sec, true
 }
 
-func buildAchievements(p snapshot.Profile) (model.Section, bool) {
+func buildAchievements(p snapshot.Profile) (model.TableSection, bool) {
 	if len(p.Achievements) == 0 {
-		return model.Section{}, false
+		return model.TableSection{}, false
 	}
-	sec := model.Section{Title: "Achievements", Count: len(p.Achievements), Columns: []string{"Achievement", "Tier", "Description"}}
+	sec := model.TableSection{
+		PanelHeader: model.PanelHeader{Title: "Achievements", Count: len(p.Achievements)},
+		Columns:     []string{"Achievement", "Tier", "Description"},
+	}
 	for _, a := range p.Achievements {
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: a.Name},

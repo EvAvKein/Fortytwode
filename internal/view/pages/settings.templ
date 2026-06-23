@@ -5,9 +5,8 @@ import "github.com/EvAvKein/Fortytwode/internal/view/model"
 // Settings is the owner-only visibility page: the public opt-in plus a
 // per-section public/private toggle.
 templ Settings(d model.SettingsData, viewerLogin string) {
-	@Layout("Settings", viewerLogin) {
+	@Layout("Settings", viewerLogin, "") {
 		<nav class="nav">
-			<a href={ templ.SafeURL("/users/" + d.Login) }>Back to profile</a>
 			<a href="/api/sync">Re-sync</a>
 			<form method="post" action="/api/logout" class="inline margin-left-auto">
 				<button type="submit" class="button">Log out</button>
@@ -16,12 +15,12 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 		<main id="main" class="centered">
 			<h1>Profile settings</h1>
 			if d.Saved {
-				<p class="good">Saved.</p>
+				<p class="good">Saved</p>
 			}
 			<form method="post" action="/api/settings" class="form">
 				<label class="check">
 					<input type="checkbox" name="is_public" checked?={ d.IsPublic }/>
-					Make my profile viewable without an account (otherwise only logged-in users can see it)
+					Make my profile viewable without a Fortytwode account
 				</label>
 				<fieldset>
 					<legend>Sections shown to other viewers</legend>

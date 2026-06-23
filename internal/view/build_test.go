@@ -3,17 +3,23 @@ package view
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/EvAvKein/Fortytwode/internal/view/model"
 )
 
 func TestSectionPublic(t *testing.T) {
-	// locations is private by default; others public by default; overrides win.
-	if SectionPublic(nil, "locations") {
-		t.Error("locations should be private by default")
+	// locations, skills, contact, and points are private by default; others public by default; overrides win.
+	for _, key := range []string{"locations", "skills", "contact", "points"} {
+		if SectionPublic(nil, key) {
+			t.Errorf("%s should be private by default", key)
+		}
 	}
 	if !SectionPublic(nil, "projects_users") {
 		t.Error("projects should be public by default")
+	}
+	if !SectionPublic(nil, "coalitions") {
+		t.Error("coalitions should be public by default")
+	}
+	if !SectionPublic(nil, "achievements") {
+		t.Error("achievements should be public by default")
 	}
 	if !SectionPublic(map[string]bool{"locations": true}, "locations") {
 		t.Error("override should make locations public")
@@ -25,69 +31,101 @@ func TestSectionPublic(t *testing.T) {
 
 func TestBuildVisibility(t *testing.T) {
 	snaps := map[string]json.RawMessage{
-		"me":             json.RawMessage(`{"login":"tester","email":"t@e.st"}`),
+		"me": json.RawMessage(`{
+			"login":"tester",
+			"email":"t@e.st",
+			"wallet": 100,
+			"correction_point": 5,
+			"cursus": [
+				{"name":"42cursus","level":9.5,"grade":"Member","skills":[{"name":"Rigor","level":4.2}]}
+			],
+			"achievements": [{"name":"First blood","tier":"easy","description":"d"}]
+		}`),
 		"projects_users": json.RawMessage(`[{"name":"libft","status":"finished","validated":true}]`),
 		"locations":      json.RawMessage(`[{"begin_at":"2026-01-01T00:00:00Z","host":"c1"}]`),
+		"coalitions":     json.RawMessage(`[{"name":"The Guards","score":183556,"color":"#c77aa5"}]`),
 	}
 
 	owner := Build(snaps, true, nil)
-	if !hasSection(owner, "Locations") || !hasSection(owner, "Projects") {
-		t.Error("owner should see both Projects and Locations")
+	if owner.Sections.Locations == nil || owner.Sections.Projects == nil {
+		t.Error("owner should see Locations and Projects")
 	}
-	if !hasKV(owner.Profile, "Email") {
-		t.Error("owner should see the Email row")
+	if owner.Sections.Contact == nil {
+		t.Error("owner should see Contact")
 	}
-	if !section(owner, "Locations").Private {
+	if !owner.Sections.Locations.Private {
 		t.Error("owner's private-by-default Locations should be badged Private")
 	}
-	if section(owner, "Projects").Private {
+	if owner.Sections.Projects.Private {
 		t.Error("owner's public Projects should not be badged Private")
+	}
+	if owner.Profile == nil || owner.Profile.Points == nil {
+		t.Fatal("owner should see the Points Remaining card")
+	}
+	if !owner.Profile.Points.Private {
+		t.Error("owner's private-by-default Points card should be badged Private")
+	}
+	if owner.Profile.Coalition == nil {
+		t.Fatal("owner should see the Coalition card")
+	}
+	if owner.Profile.Coalition.Private {
+		t.Error("owner's public-by-default Coalition card should not be badged Private")
+	}
+	if owner.Sections.Skills == nil {
+		t.Fatal("owner should see Skills")
+	}
+	if !owner.Sections.Skills.Private {
+		t.Error("owner's private-by-default Skills should be badged Private")
+	}
+	if owner.Sections.Achievements == nil {
+		t.Fatal("owner should see Achievements")
+	}
+	if owner.Sections.Achievements.Private {
+		t.Error("owner's public-by-default Achievements should not be badged Private")
 	}
 
 	pub := Build(snaps, false, nil)
-	if hasSection(pub, "Locations") {
+	if pub.Sections.Locations != nil {
 		t.Error("non-owner should not see Locations by default")
 	}
-	if !hasSection(pub, "Projects") {
+	if pub.Sections.Contact != nil {
+		t.Error("non-owner should not see Contact by default")
+	}
+	if pub.Sections.Projects == nil {
 		t.Error("non-owner should see Projects")
 	}
-	if hasKV(pub.Profile, "Email") {
-		t.Error("non-owner should not see the Email row")
+	if pub.Profile != nil && pub.Profile.Points != nil {
+		t.Error("non-owner should not see the Points Remaining card by default")
+	}
+	if pub.Profile == nil || pub.Profile.Coalition == nil {
+		t.Error("non-owner should see the Coalition card by default")
+	}
+	if pub.Sections.Skills != nil {
+		t.Error("non-owner should not see Skills by default")
+	}
+	if pub.Sections.Achievements == nil {
+		t.Error("non-owner should see Achievements by default")
 	}
 
-	opted := Build(snaps, false, map[string]bool{"locations": true})
-	if !hasSection(opted, "Locations") {
-		t.Error("non-owner should see Locations when the owner opts it public")
+	private := Build(snaps, false, map[string]bool{"coalitions": false, "achievements": false})
+	if private.Profile != nil && private.Profile.Coalition != nil {
+		t.Error("non-owner should not see the Coalition card when opted private")
 	}
-}
+	if private.Sections.Achievements != nil {
+		t.Error("non-owner should not see Achievements when opted private")
+	}
 
-func hasSection(d model.PageData, title string) bool {
-	for _, s := range d.Sections {
-		if s.Title == title {
-			return true
-		}
+	opted := Build(snaps, false, map[string]bool{"locations": true, "contact": true, "points": true, "skills": true})
+	if opted.Sections.Locations == nil {
+		t.Error("non-owner should see Locations when opted public")
 	}
-	return false
-}
-
-// section returns the named section, or a zero Section if absent.
-func section(d model.PageData, title string) model.Section {
-	for _, s := range d.Sections {
-		if s.Title == title {
-			return s
-		}
+	if opted.Sections.Contact == nil {
+		t.Error("non-owner should see Contact when opted public")
 	}
-	return model.Section{}
-}
-
-func hasKV(p *model.Profile, key string) bool {
-	if p == nil {
-		return false
+	if opted.Profile == nil || opted.Profile.Points == nil {
+		t.Error("non-owner should see the Points Remaining card when opted public")
 	}
-	for _, kv := range p.Rows {
-		if kv.Key == key {
-			return true
-		}
+	if opted.Sections.Skills == nil {
+		t.Error("non-owner should see Skills when opted public")
 	}
-	return false
 }

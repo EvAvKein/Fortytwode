@@ -6,7 +6,8 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/view/model"
 )
 
-templ SectionPanel(s model.Section) {
+// EvalPanel renders a collapsible evaluations section as a card list.
+templ EvalPanel(s model.EvalSection) {
 	<details>
 		<summary>
 			<span class="title">
@@ -21,11 +22,7 @@ templ SectionPanel(s model.Section) {
 			if s.Summary != "" {
 				<div class="stat">{ s.Summary }</div>
 			}
-			if len(s.Evals) > 0 {
-				@EvalList(s.Evals)
-			} else {
-				@Table(s)
-			}
+			@EvalList(s.Evals)
 		</div>
 	</details>
 }

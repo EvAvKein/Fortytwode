@@ -590,10 +590,78 @@ func (s *Server) settingsData(acc store.Account, saved bool) model.SettingsData 
 			Key:     t.Key,
 			Label:   t.Label,
 			Public:  view.SectionPublic(acc.Visibility, t.Key),
-			HasData: hasData(acc.Data[t.Key]),
+			HasData: settingsHasData(acc.Data, t.Key),
 		})
 	}
 	return d
+}
+
+// settingsHasData reports whether a toggleable section has data. Most sections
+// are top-level snapshot resources; skills, contact, and points are derived from
+// the curated /me profile.
+func settingsHasData(data map[string]json.RawMessage, key string) bool {
+	switch key {
+	case "skills":
+		return profileHasSkills(data["me"])
+	case "contact":
+		return profileHasEmail(data["me"])
+	case "points":
+		return profileHasPoints(data["me"])
+	case "achievements":
+		return profileHasAchievements(data["me"])
+	case "coalitions":
+		return hasData(data["coalitions"])
+	default:
+		return hasData(data[key])
+	}
+}
+
+func profileHasSkills(raw json.RawMessage) bool {
+	var p struct {
+		Cursus []struct {
+			Skills []struct{ Name string } `json:"skills"`
+		} `json:"cursus"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return false
+	}
+	for _, c := range p.Cursus {
+		if len(c.Skills) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func profileHasEmail(raw json.RawMessage) bool {
+	var p struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return false
+	}
+	return p.Email != ""
+}
+
+func profileHasPoints(raw json.RawMessage) bool {
+	var p struct {
+		CorrectionPoint int `json:"correction_point"`
+		Wallet          int `json:"wallet"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return false
+	}
+	return p.CorrectionPoint != 0 || p.Wallet != 0
+}
+
+func profileHasAchievements(raw json.RawMessage) bool {
+	var p struct {
+		Achievements []struct{ Name string } `json:"achievements"`
+	}
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return false
+	}
+	return len(p.Achievements) > 0
 }
 
 // hasData reports whether a snapshot resource holds something worth showing.

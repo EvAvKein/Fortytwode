@@ -2,7 +2,7 @@ package pages
 
 // LoginForm is the sign-in page; errMsg is shown when non-empty.
 templ LoginForm(errMsg string, viewerLogin string) {
-	@Layout("Log in", viewerLogin) {
+	@Layout("Log in", viewerLogin, "") {
 		<main id="main" class="centered">
 			<h1>Log in</h1>
 			if errMsg != "" {

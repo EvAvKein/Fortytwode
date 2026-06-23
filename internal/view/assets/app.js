@@ -6,3 +6,24 @@ document.addEventListener('submit', function (e) {
   var msg = e.target.getAttribute && e.target.getAttribute('data-confirm');
   if (msg && !window.confirm(msg)) e.preventDefault();
 }, true);
+
+(function setupPrintDetails() {
+  const openForPrintingClass = 'openForPrinting';
+
+  function openDetailsForPrint() {
+    for (const details of document.querySelectorAll('details:not([open])')) {
+      details.setAttribute('open', '');
+      details.classList.add(openForPrintingClass);
+    }
+  }
+
+  function closeDetailsAfterPrint() {
+    for (const details of document.querySelectorAll(`details.${openForPrintingClass}`)) {
+      details.removeAttribute('open');
+      details.classList.remove(openForPrintingClass);
+    }
+  }
+
+  window.addEventListener('beforeprint', openDetailsForPrint);
+  window.addEventListener('afterprint', closeDetailsAfterPrint);
+})();

@@ -1,0 +1,28 @@
+package profile
+
+import (
+	"strconv"
+
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
+)
+
+// TablePanel renders a collapsible table section.
+templ TablePanel(s model.TableSection) {
+	<details>
+		<summary>
+			<span class="title">
+				{ s.Title }
+				if s.Private {
+					<span class="private" title="Hidden from other viewers">Private</span>
+				}
+			</span>
+			<span class="count">{ strconv.Itoa(s.Count) }</span>
+		</summary>
+		<div class="body">
+			if s.Summary != "" {
+				<div class="stat">{ s.Summary }</div>
+			}
+			@Table(s)
+		</div>
+	</details>
+}

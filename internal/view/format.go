@@ -5,6 +5,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
 )
 
 // ----------------------------------------------------------------------------
@@ -31,6 +35,11 @@ func dashInt(p *int) string {
 	return strconv.Itoa(*p)
 }
 
+// commaInt formats n with thousands separators for English locale.
+func commaInt(n int) string {
+	return message.NewPrinter(language.English).Sprintf("%d", n)
+}
+
 func dashFloat(p *float64) string {
 	if p == nil {
 		return "—"
@@ -43,6 +52,16 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// ucFirst uppercases the first rune of s and leaves the rest unchanged.
+func ucFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }
 
 func toneIf(cond bool, tone string) string {

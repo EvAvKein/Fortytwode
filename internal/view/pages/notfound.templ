@@ -2,7 +2,7 @@ package pages
 
 // NotFound is the catch-all 404 for any unmatched page route.
 templ NotFound(viewerLogin string) {
-	@Layout("Page not found", viewerLogin) {
+	@Layout("Page not found", viewerLogin, "") {
 		<main id="main" class="centered">
 			<h1>404</h1>
 			<p>That page doesn't exist.</p>
@@ -13,7 +13,7 @@ templ NotFound(viewerLogin string) {
 // ProfileNotFound is the 404 for /users/{login} when no such account exists. login is
 // the requested 42 login; templ HTML-escapes the interpolation.
 templ ProfileNotFound(login string, viewerLogin string) {
-	@Layout("Profile not found", viewerLogin) {
+	@Layout("Profile not found", viewerLogin, "") {
 		<main id="main" class="centered">
 			<h1>No such profile</h1>
 			<p>There's no Fortytwode profile for <strong>{ login }</strong>.</p>

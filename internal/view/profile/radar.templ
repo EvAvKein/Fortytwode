@@ -1,0 +1,43 @@
+package profile
+
+import (
+	"fmt"
+
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
+)
+
+// RadarChart renders an inline SVG radar chart for the given skills.
+// It includes ARIA labelling and a visually-hidden data table for screen readers.
+templ RadarChart(skills []model.SkillBar) {
+	{{ d := buildRadarData(skills) }}
+	<figure class="radar-chart">
+		<svg viewBox={ fmt.Sprintf("0 0 %d %d", radarViewW, radarViewH) } role="img" aria-label={ d.Summary }>
+			<desc>{ d.Summary }</desc>
+			<!-- concentric grid polygons -->
+			for _, path := range d.GridPaths {
+				<path d={ path } class="radar-grid"></path>
+			}
+			<!-- data polygon -->
+			<path d={ d.DataPolygon } class="radar-fill"></path>
+			<!-- numbered data dots -->
+			for _, dot := range d.DataDots {
+				<g class="radar-dot-group">
+					<circle cx={ fmt.Sprintf("%.1f", dot.X) } cy={ fmt.Sprintf("%.1f", dot.Y) } r="8" class="radar-dot"></circle>
+					<text x={ fmt.Sprintf("%.1f", dot.X) } y={ fmt.Sprintf("%.1f", dot.Y) } class="radar-index" text-anchor="middle" dominant-baseline="central">{ fmt.Sprintf("%d", dot.Index) }</text>
+				</g>
+			}
+		</svg>
+		<figcaption class="sr-only">
+			<table>
+				<thead>
+					<tr><th>Skill</th><th>Level</th></tr>
+				</thead>
+				<tbody>
+					for _, sk := range skills {
+						<tr><td>{ sk.Name }</td><td>{ sk.Level }</td></tr>
+					}
+				</tbody>
+			</table>
+		</figcaption>
+	</figure>
+}

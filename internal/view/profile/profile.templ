@@ -1,32 +1,102 @@
-// Package profile holds the templ partials for the profile/dashboard page: the
-// profile header plus the cursus, section, table, and evaluation-list panels.
-// They're rendered inside the shared Layout by the pages package.
+// Package profile holds the templ templates for the profile/dashboard page: the
+// profile header plus the section, table, evaluation-list, skills, radar, and
+// contact panels. They're rendered inside the shared Layout by the pages package.
 package profile
 
-import "github.com/EvAvKein/Fortytwode/internal/view/model"
+import (
+	"strconv"
+
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
+)
 
 templ ProfileHeader(p *model.Profile) {
-	<header class="profile" style={ p.BorderStyle() }>
-		if p.ImageURL != "" {
-			<img src={ p.ImageURL } alt=""/>
-		}
-		<div>
-			<h1>{ p.Name }</h1>
-			if p.Login != "" {
-				<div class="login">{ "@" + p.Login }</div>
+	<header class="profile">
+		<div class="profile-id">
+			if p.ImageURL != "" {
+				<img src={ p.ImageURL } alt=""/>
 			}
-			if p.Coalition != nil {
-				<div class="coalition">
-					<span class="dot" style={ "color:" + p.Coalition.Color }>●</span>
-					{ p.Coalition.Name } · { p.Coalition.Score }
-				</div>
-			}
-			<dl>
-				for _, kv := range p.Rows {
-					<dt>{ kv.Key }</dt>
-					<dd>{ kv.Value }</dd>
+			<div>
+				<h1>{ p.Name }</h1>
+				if p.Login != "" {
+					<div class="login">{ "@" + p.Login }</div>
 				}
-			</dl>
+			</div>
 		</div>
+		if len(p.Cursus) > 0 {
+			<div class="profile-cursus">
+				{{ latest := p.Cursus[0] }}
+				<div class="cursus-row latest">
+					<span class="cursus-name">{ latest.Name }</span>
+					<span class="cursus-grade-pill">{ latest.Grade }</span>
+					<span class="cursus-level">{ latest.Level }</span>
+				</div>
+				if len(p.Cursus) > 1 {
+					<details class="cursus-more">
+						<summary>{ strconv.Itoa(len(p.Cursus)-1) + " older cursus" }</summary>
+						<div class="cursus-more-body">
+							for _, c := range p.Cursus[1:] {
+								<div class="cursus-row">
+									<span class="cursus-name">{ c.Name }</span>
+									<span class="cursus-grade">{ c.Grade }</span>
+									<span class="cursus-level">{ c.Level }</span>
+								</div>
+							}
+						</div>
+					</details>
+				}
+			</div>
+		}
+		if len(p.PrimaryStats) > 0 || p.Points != nil {
+			<div class="profile-stats">
+				if len(p.PrimaryStats) > 0 {
+					<div class="stat-row primary">
+						for _, kv := range p.PrimaryStats {
+							<div class="stat-card">
+								<span class="stat-label">{ kv.Key }</span>
+								<span class="stat-value">{ kv.Value }</span>
+							</div>
+						}
+					</div>
+				}
+				if p.Points != nil {
+					<div class="stat-row points">
+						<div class="stat-card points-card">
+							<span class="stat-title">
+								Points Remaining
+								if p.Points.Private {
+									<span class="private" title="Hidden from other viewers">Private</span>
+								}
+							</span>
+							<div class="points-items">
+								<div class="point-item">
+									<span class="point-label">Evaluation</span>
+									<span class="point-value">{ strconv.Itoa(p.Points.Eval) }</span>
+								</div>
+								<div class="point-item">
+									<span class="point-label">Store</span>
+									<span class="point-value">{ strconv.Itoa(p.Points.Wallet) + " ₳" }</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				}
+			</div>
+		}
+		if p.Coalition != nil {
+			<div class="profile-coalition">
+				<div class="coalition-body" style={ "--coalition-color:" + p.Coalition.Color }>
+					<div class="coalition-title">
+						Coalition
+						if p.Coalition.Private {
+							<span class="private" title="Hidden from other viewers">Private</span>
+						}
+					</div>
+					<div class="coalition-row">
+						<span class="coalition-name">{ p.Coalition.Name }</span>
+						<span class="coalition-score">+{ p.Coalition.Score } points</span>
+					</div>
+				</div>
+			</div>
+		}
 	</header>
 }

@@ -9,7 +9,11 @@ import "github.com/EvAvKein/Fortytwode/internal/view/assets"
 // script are loaded from the assets package as separate cacheable files (see that
 // package) rather than inlined, so editing them doesn't churn every page's HTML
 // and the pages can ship a strict script-src CSP.
-templ Layout(title string, viewerLogin string) {
+// pageLogin is the 42 login of the user whose profile/page is being rendered;
+// pass an empty string for pages that are not a user's profile. When pageLogin
+// matches viewerLogin, the "My Profile" header action is rendered as
+// a span because the viewer is already on their own profile.
+templ Layout(title string, viewerLogin string, pageLogin string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -24,7 +28,11 @@ templ Layout(title string, viewerLogin string) {
 			<header class="site-header">
 				<a href="/" class="brand">Fortytwode</a>
 				if viewerLogin != "" {
-					<a href={ templ.SafeURL("/users/" + viewerLogin) }>My Profile</a>
+					if viewerLogin == pageLogin {
+						<span class="header-action disabled">My Profile</span>
+					} else {
+						<a href={ templ.SafeURL("/users/" + viewerLogin) } class="header-action">My Profile</a>
+					}
 				}
 			</header>
 			{ children... }

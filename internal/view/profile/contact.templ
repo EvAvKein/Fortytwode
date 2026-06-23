@@ -1,0 +1,23 @@
+package profile
+
+import "github.com/EvAvKein/Fortytwode/internal/view/model"
+
+// ContactPanel renders the email contact section as simple key-value content.
+templ ContactPanel(s model.ContactSection) {
+	<details>
+		<summary>
+			<span class="title">
+				{ s.Title }
+				if s.Private {
+					<span class="private" title="Hidden from other viewers">Private</span>
+				}
+			</span>
+		</summary>
+		<div class="body">
+			<div class="contact-item">
+				<span class="contact-label">Email</span>
+				<span class="contact-value">{ s.Email }</span>
+			</div>
+		</div>
+	</details>
+}

@@ -1,0 +1,34 @@
+package profile
+
+import (
+	"strconv"
+
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
+)
+
+// SkillsPanel renders the collapsed Skills section with the radar chart and legend.
+templ SkillsPanel(s model.SkillsSection) {
+	<details>
+		<summary>
+			<span class="title">
+				{ s.Title }
+				if s.Private {
+					<span class="private" title="Hidden from other viewers">Private</span>
+				}
+			</span>
+			<span class="count">{ strconv.Itoa(s.Count) }</span>
+		</summary>
+		<div class="skills-body">
+			@RadarChart(s.Skills)
+			<ol class="skills-legend">
+				for _, sk := range s.Skills {
+					<li>
+						<span class="legend-index">{ strconv.Itoa(sk.Index) }</span>
+						<span class="legend-name">{ sk.Name }</span>
+						<span class="legend-level">{ sk.Level }</span>
+					</li>
+				}
+			</ol>
+		</div>
+	</details>
+}

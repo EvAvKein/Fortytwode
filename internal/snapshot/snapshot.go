@@ -39,11 +39,10 @@ type Profile struct {
 }
 
 type Cursus struct {
-	Name         string  `json:"name"`
-	Level        float64 `json:"level"`
-	Grade        string  `json:"grade,omitempty"`
-	BlackholedAt string  `json:"blackholed_at,omitempty"`
-	Skills       []Skill `json:"skills,omitempty"`
+	Name   string  `json:"name"`
+	Level  float64 `json:"level"`
+	Grade  string  `json:"grade,omitempty"`
+	Skills []Skill `json:"skills,omitempty"`
 }
 
 type Skill struct {
@@ -224,10 +223,9 @@ func profileFrom(me api42.Me) Profile {
 	}
 	for _, cu := range me.CursusUsers {
 		c := Cursus{
-			Name:         cu.Cursus.Name,
-			Level:        cu.Level,
-			Grade:        deref(cu.Grade),
-			BlackholedAt: deref(cu.BlackholedAt),
+			Name:  cu.Cursus.Name,
+			Level: cu.Level,
+			Grade: deref(cu.Grade),
 		}
 		for _, s := range cu.Skills {
 			c.Skills = append(c.Skills, Skill{Name: s.Name, Level: s.Level})
