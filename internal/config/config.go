@@ -16,6 +16,12 @@ const (
 	APIv2        = APIBase + "/v2"
 )
 
+// AppAPIVersion is the version prefix for Fortytwode's own REST API.
+const AppAPIVersion = "v1"
+
+// AppAPIPrefix returns the mount prefix for the web API, e.g. "/api/v1".
+func AppAPIPrefix() string { return "/api/" + AppAPIVersion }
+
 // defaultScope is the space-separated OAuth scope requested at login. "public"
 // is enough for /v2/me; widen it (e.g. "public profile projects") here and
 // rebuild if some fields come back empty. It lives in code rather than the env

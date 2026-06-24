@@ -771,6 +771,20 @@ ol.evals {
 	cursor: pointer;
 }
 
+.link-button {
+	background: none;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: var(--accent);
+	text-decoration: none;
+	cursor: pointer;
+
+	&:hover {
+		text-decoration: underline;
+	}
+}
+
 .nav {
 	width: clamp(400px, 100%, 800px);
 	margin: auto;

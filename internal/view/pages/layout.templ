@@ -3,7 +3,10 @@
 // page's sub-panels live in the sibling profile package.
 package pages
 
-import "github.com/EvAvKein/Fortytwode/internal/view/assets"
+import (
+	"github.com/EvAvKein/Fortytwode/internal/routes"
+	"github.com/EvAvKein/Fortytwode/internal/view/assets"
+)
 
 // Layout is the shared HTML shell: head + body. The stylesheet and the site-wide
 // script are loaded from the assets package as separate cacheable files (see that
@@ -19,6 +22,7 @@ templ Layout(title string, viewerLogin string, pageLogin string) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="api-prefix" content={ routes.APIPrefix() }/>
 			<title>{ title }</title>
 			<link rel="stylesheet" href={ assets.StyleHref }/>
 			<script src={ assets.AppSrc } defer></script>
@@ -26,7 +30,7 @@ templ Layout(title string, viewerLogin string, pageLogin string) {
 		<body>
 			<a href="#main" class="skip-link">Skip to content</a>
 			<header class="site-header">
-				<a href="/" class="brand">Fortytwode</a>
+				<a href={ templ.SafeURL(routes.PageHome) } class="brand">Fortytwode</a>
 				if viewerLogin != "" {
 					if viewerLogin == pageLogin {
 						<div>
@@ -34,13 +38,13 @@ templ Layout(title string, viewerLogin string, pageLogin string) {
 							<span class="header-action disabled">My Profile</span>
 						</div>
 					} else {
-						<a href={ templ.SafeURL("/users/" + viewerLogin) } class="header-action">My Profile</a>
+						<a href={ templ.SafeURL(routes.PageProfile(viewerLogin)) } class="header-action">My Profile</a>
 					}
 				}
 			</header>
 			{ children... }
 			<footer class="footer muted">
-				<a href="/privacy">Privacy</a>
+				<a href={ templ.SafeURL(routes.PagePrivacy) }>Privacy</a>
 				<span class="sep">·</span>
 				<a href="https://github.com/EvAvKein/Fortytwode" target="_blank" rel="noopener noreferrer">GitHub</a>
 			</footer>

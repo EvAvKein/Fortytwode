@@ -1,5 +1,7 @@
 package pages
 
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
 // NotFound is the catch-all 404 for any unmatched page route.
 templ NotFound(viewerLogin string) {
 	@Layout("Page not found", viewerLogin, "") {
@@ -17,7 +19,7 @@ templ ProfileNotFound(login string, viewerLogin string) {
 		<main id="main" class="centered">
 			<h1>No such profile</h1>
 			<p>There's no Fortytwode profile for <strong>{ login }</strong>.</p>
-			<a class="button bright" href="/api/sync">Get my 42 data</a>
+			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) }>Get my 42 data</a>
 		</main>
 	}
 }

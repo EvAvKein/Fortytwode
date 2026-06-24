@@ -16,6 +16,7 @@ import (
 
 	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/config"
+	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/store"
 	"github.com/a-h/templ"
 )
@@ -72,43 +73,43 @@ func Serve(cfg config.Config, st *store.Store) error {
 	return http.ListenAndServe(":"+port, s.routes())
 }
 
-// routes wires the request multiplexer: pages at the top level, action endpoints
-// under /api/. Keeping actions in their own mux lets the page mux use a catch-all
-// 404 without shadowing the action mux's per-method 405s — e.g. GET /api/logout
-// still 405s, while GET /nope renders the styled 404.
-func (s *Server) routes() http.Handler {
+// routes wires the request multiplexer: pages at the top level, API endpoints
+// under config.AppAPIPrefix(). Keeping actions in their own mux lets the page
+// mux use a catch-all 404 without shadowing the API mux's per-method 405s —
+// e.g. GET /api/<version>/session still 405s, while GET /nope renders the styled 404.
+func (server *Server) routes() http.Handler {
 	api := http.NewServeMux()
-	api.HandleFunc("GET /sync", s.handleSync)
-	api.HandleFunc("GET /auth/42/callback", s.handleCallback) // OAuth redirect URI (see .env.example)
-	api.HandleFunc("GET /auth/42/login", s.handleLogin42)     // OAuth login-only flow (no sync)
-	api.HandleFunc("GET /syncing/signin", s.handleSyncSignin)
-	api.HandleFunc("GET /fetch/stream", s.handleStream)
-	api.HandleFunc("GET /download", s.handleDownloadRaw)
-	api.HandleFunc("GET /download/curated", s.handleDownloadCurated)
-	api.HandleFunc("GET /download/saved", s.handleDownloadSaved)
-	api.HandleFunc("POST /signup", s.handleSignup)
-	api.HandleFunc("POST /login", s.handleLogin)
-	api.HandleFunc("POST /logout", s.handleLogout)
-	api.HandleFunc("POST /settings", s.handleSettings)
-	api.HandleFunc("POST /settings/email", s.handleSettingsEmail)
-	api.HandleFunc("POST /settings/password", s.handleSettingsPassword)
-	api.HandleFunc("POST /account/delete", s.handleDeleteAccount)
+	api.HandleFunc(routes.APIAuth42Callback.Pattern(), server.handleCallback) // OAuth redirect URI (see .env.example)
+	api.HandleFunc(routes.APIAuth42Login.Pattern(), server.handleLogin42)     // OAuth login-only flow (no sync)
+	api.HandleFunc(routes.API42Sync.Pattern(), server.handleSync)
+	api.HandleFunc(routes.APISyncStream.Pattern(), server.handleStream)
+	api.HandleFunc(routes.APISyncDownloadRaw.Pattern(), server.handleDownloadRaw)
+	api.HandleFunc(routes.APISyncDownloadCurated.Pattern(), server.handleDownloadCurated)
+	api.HandleFunc(routes.APILogInSync.Pattern(), server.handleSyncSignin)
+	api.HandleFunc(routes.APILogIn.Pattern(), server.handleLogin)
+	api.HandleFunc(routes.APILogOut.Pattern(), server.handleLogout)
+	api.HandleFunc(routes.APIAccountCreate.Pattern(), server.handleSignup)
+	api.HandleFunc(routes.APIAccountDownload.Pattern(), server.handleDownloadSaved)
+	api.HandleFunc(routes.APIAccountVisibility.Pattern(), server.handleSettings)
+	api.HandleFunc(routes.APIAccountEmail.Pattern(), server.handleSettingsEmail)
+	api.HandleFunc(routes.APIAccountPassword.Pattern(), server.handleSettingsPassword)
+	api.HandleFunc(routes.APIAccountDelete.Pattern(), server.handleDeleteAccount)
 
 	// Pages are top-level HTML GETs. The trailing method-less "/" is the
 	// catch-all that renders the styled 404 for any unmatched path.
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthcheck", s.handleHealth)
-	mux.HandleFunc("GET /{$}", s.handleHome)
-	mux.HandleFunc("GET /syncing", s.handleSyncing)
-	mux.HandleFunc("GET /signup", s.handleSignupForm)
-	mux.HandleFunc("GET /login", s.handleLoginForm)
-	mux.HandleFunc("GET /settings", s.handleSettingsForm)
-	mux.HandleFunc("GET /privacy", s.handlePrivacy)
-	mux.HandleFunc("GET /users/{login}", s.handleProfile)
-	registerAssets(mux) // fingerprinted /static/* stylesheet + scripts
-	mux.Handle("/api/", http.StripPrefix("/api", api))
-	mux.HandleFunc("/", s.handleNotFound)
-	return securityHeaders(mux)
+	pages := http.NewServeMux()
+	pages.HandleFunc("GET "+routes.PageHealth, server.handleHealth)
+	pages.HandleFunc("GET /{$}", server.handleHome)
+	pages.HandleFunc("GET "+routes.PageSyncing, server.handleSyncing)
+	pages.HandleFunc("GET "+routes.PageSignup, server.handleSignupForm)
+	pages.HandleFunc("GET "+routes.PageLogin, server.handleLoginForm)
+	pages.HandleFunc("GET "+routes.PageSettings, server.handleSettingsForm)
+	pages.HandleFunc("GET "+routes.PagePrivacy, server.handlePrivacy)
+	pages.HandleFunc("GET "+routes.PageProfile("{login}"), server.handleProfile)
+	registerAssets(pages) // fingerprinted /static/* stylesheet + scripts
+	pages.Handle(routes.APIPrefix()+"/", http.StripPrefix(routes.APIPrefix(), api))
+	pages.HandleFunc("/", server.handleNotFound)
+	return securityHeaders(pages)
 }
 
 // render writes a templ component as a 200 HTML response.
@@ -126,3 +127,5 @@ func renderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Co
 		fmt.Fprintf(os.Stderr, "warning: render failed: %v\n", err)
 	}
 }
+
+

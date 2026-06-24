@@ -1,6 +1,8 @@
 (function () {
-	const eventStream = new EventSource("/api/fetch/stream");
+	const apiPrefix = document.querySelector('meta[name="api-prefix"]')?.content || "/api/v1";
 	const bar = document.getElementById("bar");
+	const streamPath = bar?.dataset.streamPath || "/sync/stream";
+	const eventStream = new EventSource(apiPrefix + streamPath);
 	const label = document.getElementById("label");
 	const error = document.getElementById("error");
 	const errorActions = document.getElementById("sync-error-actions");

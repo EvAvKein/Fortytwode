@@ -1,6 +1,9 @@
 package pages
 
-import "github.com/EvAvKein/Fortytwode/internal/view/assets"
+import (
+	"github.com/EvAvKein/Fortytwode/internal/routes"
+	"github.com/EvAvKein/Fortytwode/internal/view/assets"
+)
 
 // Syncing shows the live progress bar (driven by the syncing script over SSE) and,
 // once done, the next-step actions: download, plus a link to the now-updated
@@ -12,24 +15,26 @@ templ Syncing(viewerLogin string, profileLogin string) {
 		<main id="main" class="centered">
 			<h1>Syncing your 42 data…</h1>
 			<div class="progress">
-				<div id="bar" class="progress-bar"></div>
+				<div id="bar" class="progress-bar" data-stream-path={ routes.APISyncStream.Path }></div>
 			</div>
 			<p id="label" class="muted">Starting…</p>
 			<p id="error" class="error hidden"></p>
 			<div id="sync-success-actions" class="hidden">
 				<div class="spaced-apart">
-					<a class="button bright" href="/api/download">Download raw data</a>
-					<a class="button bright" href="/api/download/curated">Download curated data</a>
+					<a class="button bright" href={ templ.SafeURL(routes.APISyncDownloadRaw.URL()) }>Download raw data</a>
+					<a class="button bright" href={ templ.SafeURL(routes.APISyncDownloadCurated.URL()) }>Download curated data</a>
 				</div>
 				<div class="spaced-apart">
 					if viewerLogin == "" {
-						<a id="signup-action" href="/signup">Sign up to keep your profile</a>
-						<a id="signin-action" class="hidden" href="/api/syncing/signin">Account detected — sign in</a>
+						<a id="signup-action" href={ templ.SafeURL(routes.PageSignup) }>Sign up to keep your profile</a>
+						<form method={ routes.APILogInSync.MethodLower() } action={ routes.APILogInSync.URL() } class="inline hidden" id="signin-action">
+							<button type="submit" class="link-button">Account detected — sign in</button>
+						</form>
 					}
 				</div>
 			</div>
 			<div id="sync-error-actions" class="spaced-apart" class="hidden">
-				<a class="button" href="/api/sync">Sync again</a>
+				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Sync again</a>
 			</div>
 			<script src={ assets.SyncingSrc } defer></script>
 		</main>

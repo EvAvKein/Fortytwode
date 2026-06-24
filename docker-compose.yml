@@ -38,7 +38,7 @@ services:
       # and point OAuth at the Nginx-fronted dev URL.
       DATABASE_URL: postgres://fortytwode:${POSTGRES_PASSWORD:-fortytwode}@db:5432/fortytwode?sslmode=disable
       PORT: "4242"
-      FT_REDIRECT_URI: http://localhost:8080/api/auth/42/callback
+      FT_REDIRECT_URI: http://localhost:8080/api/v1/auth/42/callback
     # Wait for Postgres to actually accept connections (not just exist) so the
     # boot-time migrations don't race the database coming up.
     depends_on:

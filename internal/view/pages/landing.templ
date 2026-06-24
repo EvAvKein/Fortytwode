@@ -1,5 +1,7 @@
 package pages
 
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
 // Landing is the logged-out home page: the anonymous "get my data" CTA plus a
 // link to log in. (Sign-up is only offered after syncing, once there's data to keep.)
 templ Landing(viewerLogin string) {
@@ -16,9 +18,9 @@ templ Landing(viewerLogin string) {
 				Get all your 42 data with the press of a button, and download it as JSON.
 				Optionally, create an account to create a profile you can share!
 			</p>
-			<a class="button bright" href="/api/sync">Get my 42 data</a>
+			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) }>Get my 42 data</a>
 			<p class="muted">
-				Have an account? <a href="/login">Log in</a>
+				Have an account? <a href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
 			</p>
 		</main>
 	}

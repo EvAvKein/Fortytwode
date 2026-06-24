@@ -1,5 +1,7 @@
 package pages
 
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
 // LoginForm is the sign-in page; errMsg is shown when non-empty.
 templ LoginForm(errMsg string, viewerLogin string) {
 	@Layout("Log in", viewerLogin, "") {
@@ -8,13 +10,13 @@ templ LoginForm(errMsg string, viewerLogin string) {
 			if errMsg != "" {
 				<p class="error">{ errMsg }</p>
 			}
-			<form method="post" action="/api/login" class="form">
+			<form method={ routes.APILogIn.MethodLower() } action={ routes.APILogIn.URL() } class="form">
 				<label>Email <input type="email" name="email" required/></label>
 				<label>Password <input type="password" name="password" required/></label>
 				<button type="submit" class="button">Log in</button>
 			</form>
 			<p class="auth-divider">or</p>
-			<a class="button ft" href="/api/auth/42/login">Log in with 42</a>
+			<a class="button ft" href={ templ.SafeURL(routes.APIAuth42Login.URL()) }>Log in with 42</a>
 		</main>
 	}
 }

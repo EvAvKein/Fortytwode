@@ -1,5 +1,7 @@
 package pages
 
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
 // Privacy is the privacy notice (GDPR Art. 13/14), linked from the footer.
 templ Privacy(viewerLogin string) {
 	@Layout("Privacy", viewerLogin, "") {
@@ -68,7 +70,7 @@ templ Privacy(viewerLogin string) {
 			</p>
 			<h2>Your rights</h2>
 			<p>
-				You have the right to access, update, export, restrict, object to, or delete your data. You can download your saved data at any time, and you can erase your account from <a href="/settings">Settings</a>. If you need help exercising any of these rights, contact us.
+				You have the right to access, update, export, restrict, object to, or delete your data. You can download your saved data at any time, and you can erase your account from <a href={ templ.SafeURL(routes.PageSettings) }>Settings</a>. If you need help exercising any of these rights, contact us.
 			</p>
 			<h2>Retention and deletion</h2>
 			<ul>

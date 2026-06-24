@@ -15,6 +15,7 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/auth"
 	"github.com/EvAvKein/Fortytwode/internal/config"
 	"github.com/EvAvKein/Fortytwode/internal/fetch"
+	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/snapshot"
 	"github.com/EvAvKein/Fortytwode/internal/store"
 	"github.com/EvAvKein/Fortytwode/internal/view"
@@ -163,7 +164,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// is still set, so the progress page just picks it back up.
 	jobID, j, ok := s.jobs.create(s.clientKey(r, loggedIn))
 	if !ok {
-		http.Redirect(w, r, "/syncing", http.StatusFound)
+		http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
 		return
 	}
 	s.setCookie(w, jobCookie, jobID, s.jobs.ttl)
@@ -176,13 +177,13 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if claimAccountID != 0 {
 		if retryAfter, active, lastSync, err := s.store.SyncCooldown(r.Context(), expectFtID, syncCooldown); err == nil && active {
 			j.fail(cooldownError(lastSync, retryAfter))
-			http.Redirect(w, r, "/syncing", http.StatusFound)
+			http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
 			return
 		}
 	}
 
 	s.startSync(token, j, claimAccountID, expectFtID)
-	http.Redirect(w, r, "/syncing", http.StatusFound)
+	http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
 }
 
 // startSync runs the pull in the background, pushing progress to the job. A
@@ -261,14 +262,17 @@ func (s *Server) handleSyncing(w http.ResponseWriter, r *http.Request) {
 // account comes from the job, which was matched against the 42 identity they
 // just authorized — so this can only ever log them into their own account.
 func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
+	if s.rejectCrossSite(w, r) {
+		return
+	}
 	jobID, j, ok := s.jobFor(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
 	id, login := j.matched()
 	if id == 0 {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
 	if err := s.startSession(w, r, id); err != nil {
@@ -277,7 +281,7 @@ func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
-	http.Redirect(w, r, "/users/"+login, http.StatusFound)
+	http.Redirect(w, r, routes.PageProfile(login), http.StatusFound)
 }
 
 // handleStream streams the current job's progress as Server-Sent Events.
@@ -347,7 +351,7 @@ func (s *Server) handleDownloadRaw(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDownloadSaved(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
 	writeJSONDownload(w, acc.Data, acc.FtLogin+"-saved")
@@ -409,17 +413,17 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(r.FormValue("email"))
 	password := r.FormValue("password")
 	if !validEmail(email) || len(password) < 8 {
-		render(w, r, pages.SignupForm("Enter a valid email and a password of at least 8 characters", false, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Enter a valid email and a password of at least 8 characters", false, ""))
 		return
 	}
 	jobID, j, ok := s.jobFor(r)
 	if !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please re-sync your 42 data", true, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your sync expired. Please re-sync your 42 data", true, ""))
 		return
 	}
 	snap, ftID, ftLogin, done := j.result()
 	if !done {
-		render(w, r, pages.SignupForm("Your sync hasn't finished yet, wait for it to complete", false, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your sync hasn't finished yet, wait for it to complete", false, ""))
 		return
 	}
 	hash, err := hashPassword(password)
@@ -429,7 +433,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.store.CreateAccount(r.Context(), email, hash, ftID, ftLogin, snap)
 	if errors.Is(err, store.ErrDuplicate) {
-		render(w, r, pages.SignupForm("This email or 42 profile already has an account, try logging in", false, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("This email or 42 profile already has an account, try logging in", false, ""))
 		return
 	}
 	if err != nil {
@@ -442,7 +446,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/users/"+ftLogin, http.StatusFound)
+	http.Redirect(w, r, routes.PageProfile(ftLogin), http.StatusFound)
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
@@ -460,14 +464,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		hash = dummyHash // burn the same argon2 time so a missing email isn't a timing oracle
 	}
 	if err != nil || !verifyPassword(password, hash) {
-		render(w, r, pages.LoginForm("Invalid email or password.", ""))
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Invalid email or password.", ""))
 		return
 	}
 	if err := s.startSession(w, r, acc.ID); err != nil {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
+	http.Redirect(w, r, routes.PageProfile(acc.FtLogin), http.StatusFound)
 }
 
 // handleLoginFlow completes a 42 OAuth login: it calls /v2/me to identify the
@@ -501,12 +505,12 @@ func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token s
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/users/"+acc.FtLogin, http.StatusFound)
+	http.Redirect(w, r, routes.PageProfile(acc.FtLogin), http.StatusFound)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.endSession(w, r)
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, routes.PageHome, http.StatusSeeOther)
 }
 
 // handleDeleteAccount erases the logged-in account and everything tied to it (GDPR
@@ -514,7 +518,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
 	if err := s.store.DeleteAccount(r.Context(), acc.ID); err != nil {
@@ -522,7 +526,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.endSession(w, r)
-	http.Redirect(w, r, "/", http.StatusFound)
+	http.Redirect(w, r, routes.PageHome, http.StatusSeeOther)
 }
 
 // handleProfile renders a profile, enforcing the visibility tier: owner sees all;
@@ -543,7 +547,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 
 	owner := loggedIn && viewer.ID == acc.ID
 	if !owner && !loggedIn && !acc.IsPublic {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
 
@@ -561,7 +565,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
 	render(w, r, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
@@ -570,14 +574,14 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
 	if s.rejectCrossSite(w, r) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad form", http.StatusBadRequest)
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
 		return
 	}
 	isPublic := r.FormValue("is_public") == "on"
@@ -599,14 +603,14 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
 	if s.rejectCrossSite(w, r) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad form", http.StatusBadRequest)
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
 		return
 	}
 
@@ -618,13 +622,13 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 
 	if currentPassword == "" || !validEmail(newEmail) {
 		d.EmailError = "Enter your current password and a valid email address"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 
 	if !s.passwordAttempts.allowed(acc.ID) {
 		d.EmailError = "Too many attempts, try again later"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 
@@ -632,7 +636,7 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !verifyPassword(currentPassword, hash) {
 		s.passwordAttempts.recordFailed(acc.ID)
 		d.EmailError = "Incorrect current password"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 	s.passwordAttempts.clear(acc.ID)
@@ -641,7 +645,7 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, store.ErrDuplicate) {
 			fmt.Fprintf(os.Stderr, "warning: email change rejected for account %d: duplicate %q\n", acc.ID, newEmail)
 			d.EmailError = "Could not update email"
-			render(w, r, pages.Settings(d, acc.FtLogin))
+			renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 			return
 		}
 		http.Error(w, "Could not update email", http.StatusInternalServerError)
@@ -672,14 +676,14 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
-		http.Redirect(w, r, "/login", http.StatusFound)
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
 	if s.rejectCrossSite(w, r) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Bad form", http.StatusBadRequest)
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
 		return
 	}
 
@@ -691,18 +695,18 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 
 	if currentPassword == "" || len(newPassword) < 8 {
 		d.PasswordError = "Enter your current password and a new password of at least 8 characters"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 	if newPassword != confirmPassword {
 		d.PasswordError = "New password and confirmation do not match"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 
 	if !s.passwordAttempts.allowed(acc.ID) {
 		d.PasswordError = "Too many attempts, try again later"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 
@@ -710,7 +714,7 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 	if err != nil || !verifyPassword(currentPassword, hash) {
 		s.passwordAttempts.recordFailed(acc.ID)
 		d.PasswordError = "Incorrect current password"
-		render(w, r, pages.Settings(d, acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
 		return
 	}
 	s.passwordAttempts.clear(acc.ID)

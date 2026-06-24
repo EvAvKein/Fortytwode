@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/view/model"
 	"github.com/EvAvKein/Fortytwode/internal/view/profile"
 )
@@ -12,11 +13,11 @@ templ Page(d model.PageData, viewerLogin string) {
 	@Layout(viewerLogin+"'s profile", viewerLogin, d.Login) {
 		if d.Owner {
 			<nav class="nav profile">
-				<a href="/api/sync">Re-sync</a>
+				<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
 				if d.LastSynced != "" {
 					<span class="muted">{ d.LastSynced }</span>
 				}
-				<a href="/settings" class="margin-left-auto">Settings</a>
+				<a href={ templ.SafeURL(routes.PageSettings) } class="margin-left-auto">Settings</a>
 			</nav>
 		}
 		<main id="main">

@@ -12,7 +12,7 @@ import (
 //   - style-src-attr 'unsafe-inline' keeps the few dynamic inline style="" attributes
 //     (skill-bar widths, coalition colour); they're server-computed and can't run code.
 //   - img-src allows https: so 42's CDN avatars load without pinning a host 42 may change.
-//   - connect-src 'self' permits the /syncing EventSource (same-origin SSE).
+//   - connect-src 'self' permits the /api/<version>/sync/stream EventSource (same-origin SSE).
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self'; style-src-attr 'unsafe-inline'; " +

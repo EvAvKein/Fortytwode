@@ -52,7 +52,7 @@ The first run opens your browser to authorize, catches the redirect on the local
 ### Web app
 
 Runs as a Docker stack - Postgres, the app, and Nginx - so it also needs Docker and a `POSTGRES_PASSWORD`.
-The compose stack sets `FT_REDIRECT_URI` and `DATABASE_URL` itself per mode - just register `http://localhost:8080/api/auth/42/callback` on your 42 app, then:
+The compose stack sets `FT_REDIRECT_URI` and `DATABASE_URL` itself per mode - just register `http://localhost:8080/api/v1/auth/42/callback` on your 42 app, then:
 
 ```sh
 make dev                  # build + run the whole stack, watching for edits

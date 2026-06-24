@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/EvAvKein/Fortytwode/internal/routes"
 )
 
 func TestHashVerify(t *testing.T) {
@@ -39,7 +41,7 @@ func TestDummyHashUsable(t *testing.T) {
 
 func TestClientKey(t *testing.T) {
 	s := &Server{}
-	req := httptest.NewRequest(http.MethodGet, "/api/sync", nil)
+	req := httptest.NewRequest(http.MethodGet, routes.API42Sync.URL(), nil)
 	req.Header.Set("X-Real-IP", "1.2.3.4")
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "forged"})
 
@@ -56,7 +58,7 @@ func TestClientKey(t *testing.T) {
 func TestSyncRejectsCrossSite(t *testing.T) {
 	s := &Server{}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/sync", nil)
+	req := httptest.NewRequest(http.MethodGet, routes.API42Sync.URL(), nil)
 	req.Header.Set("Sec-Fetch-Site", "cross-site")
 	rec := httptest.NewRecorder()
 	s.handleSync(rec, req)
@@ -66,7 +68,7 @@ func TestSyncRejectsCrossSite(t *testing.T) {
 
 	// Same-origin (and header-less) requests proceed to the OAuth redirect.
 	for _, site := range []string{"same-origin", ""} {
-		req := httptest.NewRequest(http.MethodGet, "/api/sync", nil)
+		req := httptest.NewRequest(http.MethodGet, routes.API42Sync.URL(), nil)
 		if site != "" {
 			req.Header.Set("Sec-Fetch-Site", site)
 		}
@@ -95,7 +97,7 @@ func TestStreamEmitsDone(t *testing.T) {
 	id, j, _ := s.jobs.create("")
 	j.finish(map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, 42, "tester")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/fetch/stream", nil)
+	req := httptest.NewRequest(http.MethodGet, routes.APISyncStream.URL(), nil)
 	req.AddCookie(&http.Cookie{Name: jobCookie, Value: id})
 	rec := httptest.NewRecorder()
 	s.handleStream(rec, req)
@@ -118,7 +120,7 @@ func TestStreamSignalsMatch(t *testing.T) {
 	j.linkAccount(7, "tester")
 	j.finish(map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, 42, "tester")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/fetch/stream", nil)
+	req := httptest.NewRequest(http.MethodGet, routes.APISyncStream.URL(), nil)
 	req.AddCookie(&http.Cookie{Name: jobCookie, Value: id})
 	rec := httptest.NewRecorder()
 	s.handleStream(rec, req)
@@ -226,11 +228,13 @@ func TestRoutes(t *testing.T) {
 		method, path string
 		want         int
 	}{
-		{"GET", "/nope", http.StatusNotFound},               // unmatched page → styled 404
-		{"POST", "/users/anyone", http.StatusNotFound},      // wrong method on a page route → friendly 404
-		{"GET", "/api/logout", http.StatusMethodNotAllowed}, // logout is POST-only → 405 preserved
-		{"POST", "/api/sync", http.StatusMethodNotAllowed},  // sync is GET-only → 405
-		{"GET", "/api/nope", http.StatusNotFound},           // unknown API path → plain 404
+		{"GET", "/nope", http.StatusNotFound},                               // unmatched page → styled 404
+		{"POST", "/users/anyone", http.StatusNotFound},                      // wrong method on a page route → friendly 404
+		{"GET", routes.APILogIn.URL(), http.StatusMethodNotAllowed},         // session is POST/DELETE-only → 405
+		{"POST", routes.API42Sync.URL(), http.StatusMethodNotAllowed},       // sync is GET-only → 405
+		{"DELETE", routes.API42Sync.URL(), http.StatusMethodNotAllowed},     // sync is GET-only → 405
+		{"GET", routes.APIAccountCreate.URL(), http.StatusMethodNotAllowed}, // account is POST/DELETE-only → 405
+		{"GET", routes.APIPrefix() + "/nope", http.StatusNotFound},          // unknown API path → plain 404
 	}
 	for _, c := range cases {
 		rec := httptest.NewRecorder()
@@ -240,10 +244,23 @@ func TestRoutes(t *testing.T) {
 		}
 	}
 
-	// The preserved 405 should still advertise the allowed method.
+	// The preserved 405 should still advertise the allowed methods.
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/logout", nil))
-	if got := rec.Header().Get("Allow"); got != "POST" {
-		t.Errorf(`GET /api/logout Allow = %q, want "POST"`, got)
+	h.ServeHTTP(rec, httptest.NewRequest("GET", routes.APILogIn.URL(), nil))
+	allow := rec.Header().Get("Allow")
+	if !strings.Contains(allow, "POST") || !strings.Contains(allow, "DELETE") {
+		t.Errorf("GET %s Allow = %q, want POST and DELETE", routes.APILogIn.URL(), allow)
+	}
+}
+
+func TestLogoutRedirectsWithSeeOther(t *testing.T) {
+	h := (&Server{}).routes()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, routes.APILogOut.URL(), nil))
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("DELETE %s = %d, want %d", routes.APILogOut.URL(), rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != routes.PageHome {
+		t.Errorf("DELETE %s Location = %q, want %q", routes.APILogOut.URL(), got, routes.PageHome)
 	}
 }
