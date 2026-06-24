@@ -14,6 +14,9 @@ templ Page(d model.PageData, viewerLogin string) {
 			<nav class="nav profile">
 				<a href="/api/sync">Re-sync</a>
 				<a href="/api/download/saved">Download saved data</a>
+				if d.LastSynced != "" {
+					<span class="muted">{ d.LastSynced }</span>
+				}
 				<a href="/settings" class="margin-left-auto">Settings</a>
 			</nav>
 		}

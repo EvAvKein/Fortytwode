@@ -262,12 +262,13 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, accountID int64, except
 }
 
 // ReserveSync atomically claims a sync slot for a 42 user, enforcing one fetch
-// per cooldown. It returns (0, true) when the slot is free (recording now() as
-// the user's last sync), or (retryAfter, false) when the user synced within the
-// cooldown — retryAfter being how long until they may sync again. The check and
-// the timestamp write happen in one statement so two concurrent syncs for the
-// same user can't both pass. Release the slot with ReleaseSync if the fetch fails.
-func (s *Store) ReserveSync(ctx context.Context, ftID int64, cooldown time.Duration) (time.Duration, bool, error) {
+// per cooldown. It returns (0, true, zero time) when the slot is free (recording
+// now() as the user's last sync), or (retryAfter, false, lastSyncAt) when the
+// user synced within the cooldown — retryAfter being how long until they may sync
+// again and lastSyncAt the previous sync timestamp. The check and the timestamp
+// write happen in one statement so two concurrent syncs for the same user can't
+// both pass. Release the slot with ReleaseSync if the fetch fails.
+func (s *Store) ReserveSync(ctx context.Context, ftID int64, cooldown time.Duration) (time.Duration, bool, time.Time, error) {
 	// The conditional ON CONFLICT updates a row only when the previous sync is
 	// older than the cooldown, so RowsAffected reports whether the slot was free.
 	tag, err := s.pool.Exec(ctx, `
@@ -276,17 +277,17 @@ func (s *Store) ReserveSync(ctx context.Context, ftID int64, cooldown time.Durat
 			WHERE sync_cooldowns.last_sync_at <= now() - make_interval(secs => $2)`,
 		ftID, cooldown.Seconds())
 	if err != nil {
-		return 0, false, err
+		return 0, false, time.Time{}, err
 	}
 	if tag.RowsAffected() == 1 {
-		return 0, true, nil
+		return 0, true, time.Time{}, nil
 	}
 	// Blocked: read the existing timestamp to report the remaining cooldown.
 	var last time.Time
 	if err := s.pool.QueryRow(ctx, `SELECT last_sync_at FROM sync_cooldowns WHERE ft_id = $1`, ftID).Scan(&last); err != nil {
-		return 0, false, err
+		return 0, false, time.Time{}, err
 	}
-	return time.Until(last.Add(cooldown)), false, nil
+	return time.Until(last.Add(cooldown)), false, last, nil
 }
 
 // ReleaseSync clears a 42 user's cooldown slot. Called when a reserved sync fails
@@ -296,23 +297,23 @@ func (s *Store) ReleaseSync(ctx context.Context, ftID int64) error {
 	return err
 }
 
-// SyncCooldown reports whether a 42 user is currently within the cooldown, and
-// the time remaining if so, without claiming a slot. It lets a caller reject a
-// known user early (before spending any API request); ReserveSync remains the
-// authoritative, atomic claim.
-func (s *Store) SyncCooldown(ctx context.Context, ftID int64, cooldown time.Duration) (time.Duration, bool, error) {
+// SyncCooldown reports whether a 42 user is currently within the cooldown, the
+// time remaining if so, and the last-sync timestamp, without claiming a slot. It
+// lets a caller reject a known user early (before spending any API request);
+// ReserveSync remains the authoritative, atomic claim.
+func (s *Store) SyncCooldown(ctx context.Context, ftID int64, cooldown time.Duration) (time.Duration, bool, time.Time, error) {
 	var last time.Time
 	err := s.pool.QueryRow(ctx, `SELECT last_sync_at FROM sync_cooldowns WHERE ft_id = $1`, ftID).Scan(&last)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
+		return 0, false, time.Time{}, nil
 	}
 	if err != nil {
-		return 0, false, err
+		return 0, false, time.Time{}, err
 	}
 	if remaining := time.Until(last.Add(cooldown)); remaining > 0 {
-		return remaining, true, nil
+		return remaining, true, last, nil
 	}
-	return 0, false, nil
+	return 0, false, time.Time{}, nil
 }
 
 // PurgeStaleCooldowns deletes sync-cooldown rows whose last sync is older than

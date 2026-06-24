@@ -116,33 +116,36 @@ func TestReserveSync(t *testing.T) {
 	cooldown := time.Hour
 
 	// First reservation succeeds.
-	if retry, ok, err := st.ReserveSync(ctx, ftID, cooldown); err != nil || !ok || retry != 0 {
-		t.Fatalf("first reserve: retry=%v ok=%v err=%v, want 0/true/nil", retry, ok, err)
+	if retry, ok, last, err := st.ReserveSync(ctx, ftID, cooldown); err != nil || !ok || retry != 0 || !last.IsZero() {
+		t.Fatalf("first reserve: retry=%v ok=%v last=%v err=%v, want 0/true/zero/nil", retry, ok, last, err)
 	}
 
-	// A second within the cooldown is blocked, reporting a positive remaining time.
-	retry, ok, err := st.ReserveSync(ctx, ftID, cooldown)
+	// A second within the cooldown is blocked, reporting a positive remaining time and the previous sync.
+	retry, ok, last, err := st.ReserveSync(ctx, ftID, cooldown)
 	if err != nil || ok {
 		t.Fatalf("second reserve: ok=%v err=%v, want false/nil", ok, err)
 	}
 	if retry <= 0 || retry > cooldown {
 		t.Errorf("retry-after = %v, want in (0, %v]", retry, cooldown)
 	}
+	if last.IsZero() {
+		t.Errorf("blocked reserve should return the previous sync time")
+	}
 
 	// The read-only check agrees: active, with remaining time, and no slot claimed.
-	if rem, active, err := st.SyncCooldown(ctx, ftID, cooldown); err != nil || !active || rem <= 0 {
-		t.Errorf("SyncCooldown while cooling: rem=%v active=%v err=%v, want >0/true/nil", rem, active, err)
+	if rem, active, last, err := st.SyncCooldown(ctx, ftID, cooldown); err != nil || !active || rem <= 0 || last.IsZero() {
+		t.Errorf("SyncCooldown while cooling: rem=%v active=%v last=%v err=%v, want >0/true/nonzero/nil", rem, active, last, err)
 	}
 
 	// After release, both the check and a fresh reservation report free.
 	if err := st.ReleaseSync(ctx, ftID); err != nil {
 		t.Fatalf("release: %v", err)
 	}
-	if _, active, err := st.SyncCooldown(ctx, ftID, cooldown); err != nil || active {
-		t.Errorf("SyncCooldown after release: active=%v err=%v, want false/nil", active, err)
+	if _, active, last, err := st.SyncCooldown(ctx, ftID, cooldown); err != nil || active || !last.IsZero() {
+		t.Errorf("SyncCooldown after release: active=%v last=%v err=%v, want false/zero/nil", active, last, err)
 	}
-	if _, ok, err := st.ReserveSync(ctx, ftID, cooldown); err != nil || !ok {
-		t.Fatalf("reserve after release: ok=%v err=%v, want true/nil", ok, err)
+	if _, ok, last, err := st.ReserveSync(ctx, ftID, cooldown); err != nil || !ok || !last.IsZero() {
+		t.Fatalf("reserve after release: ok=%v last=%v err=%v, want true/zero/nil", ok, last, err)
 	}
 }
 
@@ -186,7 +189,7 @@ func TestPurgeStaleCooldowns(t *testing.T) {
 	if n, err := st.PurgeStaleCooldowns(ctx, time.Hour); err != nil || n < 1 {
 		t.Fatalf("purge: n=%d err=%v, want >=1/nil", n, err)
 	}
-	if _, active, err := st.SyncCooldown(ctx, ftID, time.Hour); err != nil || active {
+	if _, active, _, err := st.SyncCooldown(ctx, ftID, time.Hour); err != nil || active {
 		t.Errorf("stale row should be gone: active=%v err=%v", active, err)
 	}
 }

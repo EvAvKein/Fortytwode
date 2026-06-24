@@ -8,6 +8,9 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 	@Layout("Settings", viewerLogin, "") {
 		<nav class="nav">
 			<a href="/api/sync">Re-sync</a>
+			if d.LastSynced != "" {
+				<span class="muted">{ d.LastSynced }</span>
+			}
 			<form method="post" action="/api/logout" class="inline margin-left-auto">
 				<button type="submit" class="button">Log out</button>
 			</form>

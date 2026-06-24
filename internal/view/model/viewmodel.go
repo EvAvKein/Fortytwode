@@ -114,8 +114,9 @@ type PageData struct {
 	IsError bool
 	Profile *Profile
 	Sections
-	Owner bool   // viewer owns this profile -> show the owner nav
-	Login string // 42 login of the profile being viewed (for links)
+	Owner      bool   // viewer owns this profile -> show the owner nav
+	Login      string // 42 login of the profile being viewed (for links)
+	LastSynced string // formatted "Synced: ..." timestamp for owners; empty otherwise
 }
 
 // SettingsToggle is one section's public/private switch on the settings page.
@@ -132,6 +133,7 @@ type SettingsData struct {
 	Toggles       []SettingsToggle
 	Login         string
 	Saved         bool
+	LastSynced    string // formatted "Synced: ..." timestamp
 	Email         string
 	EmailError    string
 	EmailSaved    bool

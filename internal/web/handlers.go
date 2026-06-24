@@ -174,8 +174,8 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// syncs are still gated authoritatively in startSync, once /me reveals who
 	// they are. A pre-check error is ignored; the authoritative reserve will run.
 	if claimAccountID != 0 {
-		if retryAfter, active, err := s.store.SyncCooldown(r.Context(), expectFtID, syncCooldown); err == nil && active {
-			j.fail(cooldownError(retryAfter))
+		if retryAfter, active, lastSync, err := s.store.SyncCooldown(r.Context(), expectFtID, syncCooldown); err == nil && active {
+			j.fail(cooldownError(lastSync, retryAfter))
 			http.Redirect(w, r, "/syncing", http.StatusFound)
 			return
 		}
@@ -205,12 +205,12 @@ func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int6
 		}()
 
 		res, err := fetch.Pull(ctx, client, j.setProgress, func(ftID int64) error {
-			retryAfter, allowed, err := s.store.ReserveSync(ctx, ftID, syncCooldown)
+			retryAfter, allowed, lastSync, err := s.store.ReserveSync(ctx, ftID, syncCooldown)
 			if err != nil {
 				return fmt.Errorf("could not check sync cooldown: %w", err)
 			}
 			if !allowed {
-				return cooldownError(retryAfter)
+				return cooldownError(lastSync, retryAfter)
 			}
 			reservedID = ftID
 			return nil
@@ -241,10 +241,13 @@ func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int6
 }
 
 // cooldownError is the error shown when a 42 user re-syncs within the cooldown,
-// reporting the remaining wait rounded up to whole minutes.
-func cooldownError(retryAfter time.Duration) error {
-	mins := max(1, int((retryAfter+time.Minute-time.Nanosecond)/time.Minute))
-	return fmt.Errorf("You synced recently. Try again in about %d minute(s)", mins)
+// reporting when they last synced and when they can retry.
+func cooldownError(lastSync time.Time, retryAfter time.Duration) error {
+	ago := view.Ago(lastSync)
+	if ago == "" {
+		return fmt.Errorf("You synced recently. Try again %s", view.In(retryAfter))
+	}
+	return fmt.Errorf("You synced %s. Try again %s", ago, view.In(retryAfter))
 }
 
 // handleSyncing renders the progress page (which opens the SSE stream).
@@ -547,6 +550,11 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	d := view.Build(acc.Data, owner, acc.Visibility)
 	d.Owner = owner
 	d.Login = acc.FtLogin
+	if owner {
+		if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
+			d.LastSynced = "Synced: " + ts
+		}
+	}
 	render(w, r, pages.Page(d, s.viewerLogin(r)))
 }
 
@@ -734,6 +742,9 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 // settingsData renders the current account/visibility state into the template's shape.
 func (s *Server) settingsData(acc store.Account, saved bool) model.SettingsData {
 	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email}
+	if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
+		d.LastSynced = "Synced: " + ts
+	}
 	for _, t := range view.ToggleableSections {
 		d.Toggles = append(d.Toggles, model.SettingsToggle{
 			Key:     t.Key,
