@@ -7,25 +7,25 @@ import (
 )
 
 // SkillsPanel renders the collapsed Skills section with the radar chart and legend.
-templ SkillsPanel(s model.SkillsSection) {
+templ SkillsPanel(skillsSection model.SkillsSection) {
 	<details>
 		<summary>
 			<span class="title">
-				{ s.Title }
-				if s.Private {
+				{ skillsSection.Title }
+				if skillsSection.Private {
 					<span class="private" title="Hidden from other viewers">Private</span>
 				}
 			</span>
-			<span class="count">{ strconv.Itoa(s.Count) }</span>
+			<span class="count">{ strconv.Itoa(skillsSection.Count) }</span>
 		</summary>
 		<div class="skills-body">
-			@RadarChart(s.Skills)
+			@RadarChart(skillsSection.Skills)
 			<ol class="skills-legend">
-				for _, sk := range s.Skills {
+				for _, skill := range skillsSection.Skills {
 					<li>
-						<span class="legend-index">{ strconv.Itoa(sk.Index) }</span>
-						<span class="legend-name">{ sk.Name }</span>
-						<span class="legend-level">{ sk.Level }</span>
+						<span class="legend-index">{ strconv.Itoa(skill.Index) }</span>
+						<span class="legend-name">{ skill.Name }</span>
+						<span class="legend-level">{ skill.Level }</span>
 					</li>
 				}
 			</ol>
