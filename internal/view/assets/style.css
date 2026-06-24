@@ -757,6 +757,16 @@ ol.evals {
 	cursor: default;
 }
 
+.print-button {
+	margin-right: 0.5rem;
+	background: transparent;
+	border: none;
+	padding: 0;
+	font: inherit;
+	color: var(--accent);
+	cursor: pointer;
+}
+
 .nav {
 	width: clamp(400px, 100%, 800px);
 	margin: auto;

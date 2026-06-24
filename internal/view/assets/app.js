@@ -27,3 +27,9 @@ document.addEventListener('submit', function (e) {
   window.addEventListener('beforeprint', openDetailsForPrint);
   window.addEventListener('afterprint', closeDetailsAfterPrint);
 })();
+
+document.addEventListener('click', function (e) {
+  if (e.target.closest('.print-button')) {
+    window.print();
+  }
+});

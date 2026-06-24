@@ -29,7 +29,10 @@ templ Layout(title string, viewerLogin string, pageLogin string) {
 				<a href="/" class="brand">Fortytwode</a>
 				if viewerLogin != "" {
 					if viewerLogin == pageLogin {
-						<span class="header-action disabled">My Profile</span>
+						<div>
+							<button type="button" class="header-action print-button" aria-label="Print this profile">🖨️</button>
+							<span class="header-action disabled">My Profile</span>
+						</div>
 					} else {
 						<a href={ templ.SafeURL("/users/" + viewerLogin) } class="header-action">My Profile</a>
 					}
