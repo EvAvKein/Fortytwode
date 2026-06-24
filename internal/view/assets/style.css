@@ -646,38 +646,36 @@ ol.evals {
 	font-size: 0.85rem;
 
 	li {
-		display: grid;
-		grid-template-columns: auto 1fr auto;
-		gap: 0.5rem;
-		align-items: baseline;
+		display: flex;
 		padding: 0.25rem 0;
-		border-bottom: 1px solid var(--border);
 
-		&:last-child {
-			border-bottom: none;
+		.legend-index {
+			width: 1.25rem;
+			height: 1.25rem;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			background: var(--accent);
+			color: #04282a;
+			font-size: 0.7rem;
+			font-weight: 700;
+			border-radius: 999px;
 		}
-	}
 
-	.legend-index {
-		width: 1.25rem;
-		height: 1.25rem;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--accent);
-		color: #04282a;
-		font-size: 0.7rem;
-		font-weight: 700;
-		border-radius: 999px;
-	}
+		.legend-name {
+			color: var(--text);
+			margin-left: 0.5rem;
+			margin-right: 1rem;
+		}
 
-	.legend-name {
-		color: var(--text);
-	}
+		.legend-level {
+			margin-left: auto;
+			color: var(--muted);
+		}
 
-	.legend-level {
-		color: var(--muted);
-		font-variant-numeric: tabular-nums;
+		+ li {
+			border-top: 1px solid var(--border);
+		}
 	}
 }
 
