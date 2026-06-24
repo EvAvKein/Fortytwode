@@ -37,9 +37,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # `make check` regenerates the templ code (gitignored), then fails on any
-      # unformatted source, vets, and builds.
-      - name: Check (generate, gofmt, vet, build)
+      # `make check` regenerates the templ code (gitignored), formats, vets,
+      # scans dependencies for known CVEs, and builds.
+      - name: Check (generate, fmt, vet, vuln, build)
         run: make check
 
       # DATABASE_URL switches the store tests on (they self-skip when it's unset).
@@ -47,8 +47,3 @@ jobs:
         env:
           DATABASE_URL: postgres://fortytwode:fortytwode@localhost:5432/fortytwode?sslmode=disable
         run: make test
-
-      # Scan dependencies for known CVEs. Its own step (not in `make check`) so the
-      # local pre-commit gate stays fast/offline; govulncheck fetches the vuln DB.
-      - name: Vulnerability scan
-        run: make vuln

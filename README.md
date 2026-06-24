@@ -66,16 +66,17 @@ The Postgres schema is applied on the first connection.
 | Command              | What it does                                                            |
 | -------------------- | ----------------------------------------------------------------------- |
 | `make fetch`         | CLI: authenticate and save your own data to `./output/*.json`           |
-| `make fetch-curated` | CLI: dump only `./output/curated.json` — the subset the DB stores       |
+| `make fetch-curated` | CLI: dump only `./output/curated.json`, the subset the database stores  |
 | `make dev`           | Dev stack (hot reload, HTTP) at <http://localhost:8080>                 |
-| `make deploy`        | First prod deploy / cert renewal: get the cert, then start prod         |
-| `make prod`          | Restart the prod stack (TLS + per-IP rate limiting) on `:80`/`:443`     |
-| `make migrate`       | Apply pending DB migrations standalone (`serve` also does this on boot) |
+| `make deploy`        | First prod deploy / cert renewal: `down` → `cert` → `prod`              |
+| `make prod`          | Restart the prod stack (TLS & per-IP rate limiting) on `:80`/`:443`     |
+| `make cert`          | Obtain/renew the Let's Encrypt cert (used by `deploy`)                  |
+| `make migrate`       | Apply pending DB migrations (`serve` also does this on boot)            |
 | `make backup`        | Dump the database to `./backup-<timestamp>.dump`                        |
 | `make logs`          | Follow the logs                                                         |
 | `make down`          | Stop the stack                                                          |
 
-(Host targets `make build` / `fmt` / `check` / `test` remain for non-container work.)
+(Make targets `build` / `fmt` / `vet` / `vuln` / `check` / `test` exist for non-container work.)
 
 The web flow:
 1. Open `/`

@@ -11,12 +11,11 @@ endif
 
 BINARY := fortytwode
 
-
 # build: regenerate templ code, then compile the binary (default target)
 build: generate
 	go build -o $(BINARY) .
 
-# generate: regenerate the templ view code (internal/web/*_templ.go)
+# generate: regenerate the templ view code (internal/view/*_templ.go)
 generate:
 	go generate ./...
 
@@ -30,15 +29,14 @@ dev:
 prod:
 	docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up --build -d
 
-# deploy: obtain/renew the Let's Encrypt cert, then bring up the prod stack. Re-run
-# to renew (--keep-until-expiring no-ops until the cert is near expiry). Needs
-# DOMAIN and CERTBOT_EMAIL in .env, the domain's DNS pointing here, and ports
-# 80/443 reachable. Each line is a separate shell, so make aborts on the first fail.
-deploy:
-	docker compose down
+# cert: obtain/renew the Let's Encrypt certificate. Usually run via `make deploy`;
+# use standalone only when you need to renew the cert without redeploying prod.
+cert:
 	docker compose -f deploy/docker-compose.cert.yml up --force-recreate --exit-code-from certbot
 	docker compose -f deploy/docker-compose.cert.yml down
-	docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up --build -d
+
+# deploy: full prod deploy/renewal - `down` -> `cert` -> `prod`
+deploy: down cert prod
 
 # migrate: apply any pending database migrations against the running stack's db.
 # serve also applies them on boot; this runs them standalone (e.g. before a deploy)
@@ -81,8 +79,8 @@ logs:
 fetch: build
 	./$(BINARY) fetch
 
-# fetch-curated: build, then dump only the single curated JSON we'd persist
-# (./output/curated.json) — a transparency preview of what the database stores
+# fetch-curated: build, then dump only the single curated JSON we'd persist (./output/curated.json).
+# Serves as a transparency preview of what the database stores
 fetch-curated: build
 	./$(BINARY) fetch curated
 
@@ -95,17 +93,12 @@ fmt:
 vet:
 	go vet ./...
 
-# vuln: scan dependencies + reachable code for known CVEs. Kept out of `check` so
-# the pre-commit gate stays fast and offline — govulncheck fetches the vuln DB over
-# the network. CI runs it as its own step.
+# vuln: scan dependencies and reachable code for known CVEs
 vuln:
 	go tool govulncheck ./...
 
-# check: fail if anything is unformatted, then vet and build (pre-commit gate)
-check: generate
-	@test -z "$$(gofmt -l .)" || { echo "gofmt needed in:"; gofmt -l .; exit 1; }
-	go vet ./...
-	go build -o $(BINARY) .
+# check: format, vet, scan for known CVEs, and build
+check: fmt vet vuln build
 
 # tidy: prune go.mod / go.sum
 tidy:
@@ -120,4 +113,4 @@ clean:
 test:
 	go test ./...
 
-.PHONY: build generate dev prod deploy migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
+.PHONY: build generate dev prod cert deploy migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
