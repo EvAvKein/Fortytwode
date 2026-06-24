@@ -90,7 +90,7 @@ fmt:
 	go tool templ fmt .
 
 # vet: report suspicious constructs
-vet:
+vet: generate
 	go vet ./...
 
 # vuln: scan dependencies and reachable code for known CVEs
