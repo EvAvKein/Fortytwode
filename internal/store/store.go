@@ -176,6 +176,37 @@ func (s *Store) UpdateVisibility(ctx context.Context, accountID int64, isPublic 
 	return err
 }
 
+// UpdateEmail changes the account's email address. A unique-constraint violation
+// (the new email is already taken) is reported as ErrDuplicate.
+func (s *Store) UpdateEmail(ctx context.Context, accountID int64, email string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET email = $2 WHERE id = $1`,
+		accountID, email)
+	if isUniqueViolation(err) {
+		return ErrDuplicate
+	}
+	return err
+}
+
+// UpdatePassword changes the account's password hash.
+func (s *Store) UpdatePassword(ctx context.Context, accountID int64, passwordHash string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET password_hash = $2 WHERE id = $1`,
+		accountID, passwordHash)
+	return err
+}
+
+// AccountPasswordHash returns the current password hash for an account.
+func (s *Store) AccountPasswordHash(ctx context.Context, accountID int64) (string, error) {
+	var hash string
+	err := s.pool.QueryRow(ctx,
+		`SELECT password_hash FROM accounts WHERE id = $1`, accountID).Scan(&hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return hash, err
+}
+
 // DeleteAccount erases an account and everything tied to it: the row holds the 42
 // snapshot, and sessions cascade via the foreign key, so this is a full erasure
 // (GDPR Art. 17). A missing id is not an error.
@@ -218,6 +249,15 @@ func (s *Store) PurgeExpiredSessions(ctx context.Context) (int64, error) {
 // DeleteSession removes a session (logout). A missing id is not an error.
 func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, sessionID)
+	return err
+}
+
+// DeleteOtherSessions removes every session for an account except the one given.
+// Used after sensitive account changes (email/password) to sign out other devices.
+func (s *Store) DeleteOtherSessions(ctx context.Context, accountID int64, exceptSessionID string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM sessions WHERE account_id = $1 AND id <> $2`,
+		accountID, exceptSessionID)
 	return err
 }
 

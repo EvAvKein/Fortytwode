@@ -227,6 +227,79 @@ func TestPurgeExpiredSessions(t *testing.T) {
 	}
 }
 
+func TestAccountCredentialsAndSessions(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	unique := time.Now().UnixNano()
+	email := fmt.Sprintf("cred-%d@e.st", unique)
+	login := fmt.Sprintf("cred%d", unique)
+	ftID := unique
+
+	id, err := st.CreateAccount(ctx, email, "hash$value", ftID, login, map[string]json.RawMessage{
+		"me": json.RawMessage(`{"login":"` + login + `"}`),
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, id) })
+
+	// UpdateEmail changes the address and reports duplicates.
+	newEmail := fmt.Sprintf("new-%d@e.st", unique)
+	if err := st.UpdateEmail(ctx, id, newEmail); err != nil {
+		t.Fatalf("update email: %v", err)
+	}
+	if acc, _, err := st.AccountByEmail(ctx, newEmail); err != nil || acc.Email != newEmail {
+		t.Errorf("lookup new email: %+v %v", acc, err)
+	}
+
+	otherLogin := fmt.Sprintf("other%d", unique)
+	otherID, err := st.CreateAccount(ctx, email, "h", ftID+1, otherLogin, map[string]json.RawMessage{
+		"me": json.RawMessage(`{"login":"` + otherLogin + `"}`),
+	})
+	if err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, otherID) })
+	if err := st.UpdateEmail(ctx, id, email); !errors.Is(err, ErrDuplicate) {
+		t.Errorf("duplicate email update: got %v, want ErrDuplicate", err)
+	}
+
+	// AccountPasswordHash returns the stored hash.
+	if hash, err := st.AccountPasswordHash(ctx, id); err != nil || hash != "hash$value" {
+		t.Errorf("password hash: got %q %v", hash, err)
+	}
+	if _, err := st.AccountPasswordHash(ctx, 0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing account hash: got %v, want ErrNotFound", err)
+	}
+
+	// UpdatePassword changes the hash.
+	if err := st.UpdatePassword(ctx, id, "newhash"); err != nil {
+		t.Fatalf("update password: %v", err)
+	}
+	if hash, err := st.AccountPasswordHash(ctx, id); err != nil || hash != "newhash" {
+		t.Errorf("updated password hash: got %q %v", hash, err)
+	}
+
+	// DeleteOtherSessions keeps the current session and removes the rest.
+	current := "current-" + login
+	other := "other-" + login
+	if err := st.CreateSession(ctx, current, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create current session: %v", err)
+	}
+	if err := st.CreateSession(ctx, other, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create other session: %v", err)
+	}
+	if err := st.DeleteOtherSessions(ctx, id, current); err != nil {
+		t.Fatalf("delete other sessions: %v", err)
+	}
+	if got, err := st.SessionAccount(ctx, current); err != nil || got.ID != id {
+		t.Errorf("current session should survive: %+v %v", got, err)
+	}
+	if _, err := st.SessionAccount(ctx, other); !errors.Is(err, ErrNotFound) {
+		t.Errorf("other session should be deleted: got %v, want ErrNotFound", err)
+	}
+}
+
 func keys(m map[string]json.RawMessage) []string {
 	var ks []string
 	for k := range m {

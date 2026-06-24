@@ -184,6 +184,42 @@ func TestNotFoundHandler(t *testing.T) {
 	}
 }
 
+func TestPasswordAttemptLimiter(t *testing.T) {
+	limiter := newPasswordAttemptLimiter(3, 100*time.Millisecond)
+	const id int64 = 1
+
+	// The first three attempts are allowed.
+	for i := 0; i < 3; i++ {
+		if !limiter.allowed(id) {
+			t.Fatalf("attempt %d should be allowed", i+1)
+		}
+		limiter.recordFailed(id)
+	}
+
+	// The fourth attempt is blocked.
+	if limiter.allowed(id) {
+		t.Error("fourth attempt should be blocked")
+	}
+
+	// After the window passes, attempts are allowed again.
+	time.Sleep(150 * time.Millisecond)
+	if !limiter.allowed(id) {
+		t.Error("attempts should be allowed after the window expires")
+	}
+
+	// A successful check clears the history.
+	limiter.recordFailed(id)
+	limiter.clear(id)
+	if !limiter.allowed(id) {
+		t.Error("clear should reset the limiter")
+	}
+
+	// Different accounts are tracked independently.
+	if !limiter.allowed(2) {
+		t.Error("other accounts should not be blocked")
+	}
+}
+
 func TestRoutes(t *testing.T) {
 	h := (&Server{}).routes()
 	cases := []struct {

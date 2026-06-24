@@ -125,10 +125,16 @@ type SettingsToggle struct {
 	HasData    bool
 }
 
-// SettingsData is the settings page view: the public opt-in plus per-section toggles.
+// SettingsData is the settings page view: the public opt-in plus per-section toggles,
+// plus account forms (email/password) and their inline feedback.
 type SettingsData struct {
-	IsPublic bool
-	Toggles  []SettingsToggle
-	Login    string
-	Saved    bool
+	IsPublic      bool
+	Toggles       []SettingsToggle
+	Login         string
+	Saved         bool
+	Email         string
+	EmailError    string
+	EmailSaved    bool
+	PasswordError string
+	PasswordSaved bool
 }

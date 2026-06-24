@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/store"
@@ -22,6 +23,12 @@ const (
 	stateCookie   = "ftstate"
 	intentCookie  = "ftintent"
 	sessionTTL    = 30 * 24 * time.Hour
+)
+
+// Per-account failed-password rate limit for sensitive settings changes.
+const (
+	maxPasswordAttempts   = 5
+	passwordAttemptWindow = 15 * time.Minute
 )
 
 // argon2id parameters (OWASP-recommended baseline). Encoded into each hash, so
@@ -124,14 +131,93 @@ func (s *Server) currentAccount(r *http.Request) (store.Account, bool) {
 	return acc, true
 }
 
+// currentSessionID returns the active session id from the cookie, if present.
+func (s *Server) currentSessionID(r *http.Request) (string, bool) {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil || c.Value == "" {
+		return "", false
+	}
+	return c.Value, true
+}
+
 // startSession creates a session row and sets the session cookie.
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, accountID int64) error {
+	_, err := s.startSessionWithID(w, r, accountID)
+	return err
+}
+
+// startSessionWithID creates a session row, sets the cookie, and returns the
+// new session id. Callers that need the id (e.g. session rotation) use this.
+func (s *Server) startSessionWithID(w http.ResponseWriter, r *http.Request, accountID int64) (string, error) {
 	id := randomToken()
 	if err := s.store.CreateSession(r.Context(), id, accountID, time.Now().Add(sessionTTL)); err != nil {
-		return err
+		return "", err
 	}
 	s.setCookie(w, sessionCookie, id, sessionTTL)
-	return nil
+	return id, nil
+}
+
+// rotateSession creates a new session for the account, sets the new cookie, and
+// deletes the old session row. It returns the new session id.
+func (s *Server) rotateSession(w http.ResponseWriter, r *http.Request, accountID int64, oldSessionID string) (string, error) {
+	newID, err := s.startSessionWithID(w, r, accountID)
+	if err != nil {
+		return "", err
+	}
+	_ = s.store.DeleteSession(r.Context(), oldSessionID)
+	return newID, nil
+}
+
+// passwordAttemptLimiter tracks recent failed password attempts per account.
+// It is intentionally in-memory and non-persistent: a restart clears it.
+type passwordAttemptLimiter struct {
+	mu       sync.Mutex
+	attempts map[int64][]time.Time
+	max      int
+	window   time.Duration
+}
+
+func newPasswordAttemptLimiter(max int, window time.Duration) *passwordAttemptLimiter {
+	return &passwordAttemptLimiter{
+		attempts: make(map[int64][]time.Time),
+		max:      max,
+		window:   window,
+	}
+}
+
+// allowed reports whether the account may currently attempt a password check.
+// It garbage-collects stale entries but does not record a new failure here.
+func (p *passwordAttemptLimiter) allowed(accountID int64) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.countRecentLocked(accountID) < p.max
+}
+
+// recordFailed records one failed password attempt for the account.
+func (p *passwordAttemptLimiter) recordFailed(accountID int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.attempts[accountID] = append(p.attempts[accountID], time.Now())
+}
+
+// clear removes the failure history for the account after a successful check.
+func (p *passwordAttemptLimiter) clear(accountID int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.attempts, accountID)
+}
+
+func (p *passwordAttemptLimiter) countRecentLocked(accountID int64) int {
+	cutoff := time.Now().Add(-p.window)
+	list := p.attempts[accountID]
+	kept := list[:0]
+	for _, t := range list {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	p.attempts[accountID] = kept
+	return len(kept)
 }
 
 // endSession deletes the session row (if any) and clears the cookie.

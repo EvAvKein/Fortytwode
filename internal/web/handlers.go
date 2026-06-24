@@ -565,6 +565,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusFound)
 		return
 	}
+	if s.rejectCrossSite(w, r) {
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Bad form", http.StatusBadRequest)
 		return
@@ -582,9 +585,155 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	render(w, r, pages.Settings(s.settingsData(acc, true), acc.FtLogin))
 }
 
-// settingsData renders the current visibility state into the template's shape.
+// handleSettingsEmail updates the account's email address after verifying the
+// current password. On success it rotates the current session and invalidates
+// every other session.
+func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
+	acc, ok := s.currentAccount(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	if s.rejectCrossSite(w, r) {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad form", http.StatusBadRequest)
+		return
+	}
+
+	currentPassword := r.FormValue("current_password")
+	newEmail := strings.TrimSpace(r.FormValue("email"))
+
+	d := s.settingsData(acc, false)
+	d.Email = newEmail
+
+	if currentPassword == "" || !validEmail(newEmail) {
+		d.EmailError = "Enter your current password and a valid email address"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+
+	if !s.passwordAttempts.allowed(acc.ID) {
+		d.EmailError = "Too many attempts, try again later"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+
+	hash, err := s.store.AccountPasswordHash(r.Context(), acc.ID)
+	if err != nil || !verifyPassword(currentPassword, hash) {
+		s.passwordAttempts.recordFailed(acc.ID)
+		d.EmailError = "Incorrect current password"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	s.passwordAttempts.clear(acc.ID)
+
+	if err := s.store.UpdateEmail(r.Context(), acc.ID, newEmail); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			fmt.Fprintf(os.Stderr, "warning: email change rejected for account %d: duplicate %q\n", acc.ID, newEmail)
+			d.EmailError = "Could not update email"
+			render(w, r, pages.Settings(d, acc.FtLogin))
+			return
+		}
+		http.Error(w, "Could not update email", http.StatusInternalServerError)
+		return
+	}
+
+	acc.Email = newEmail
+	d = s.settingsData(acc, false)
+	d.Email = newEmail
+	d.EmailSaved = true
+
+	oldSID, ok := s.currentSessionID(r)
+	if ok {
+		newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not rotate session after email change for account %d: %v\n", acc.ID, err)
+		} else if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, newSID); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not invalidate other sessions after email change for account %d: %v\n", acc.ID, err)
+		}
+	}
+
+	render(w, r, pages.Settings(d, acc.FtLogin))
+}
+
+// handleSettingsPassword updates the account's password after verifying the
+// current password. On success it rotates the current session and invalidates
+// every other session.
+func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) {
+	acc, ok := s.currentAccount(r)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	if s.rejectCrossSite(w, r) {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad form", http.StatusBadRequest)
+		return
+	}
+
+	currentPassword := r.FormValue("current_password")
+	newPassword := r.FormValue("new_password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	d := s.settingsData(acc, false)
+
+	if currentPassword == "" || len(newPassword) < 8 {
+		d.PasswordError = "Enter your current password and a new password of at least 8 characters"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	if newPassword != confirmPassword {
+		d.PasswordError = "New password and confirmation do not match"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+
+	if !s.passwordAttempts.allowed(acc.ID) {
+		d.PasswordError = "Too many attempts, try again later"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+
+	hash, err := s.store.AccountPasswordHash(r.Context(), acc.ID)
+	if err != nil || !verifyPassword(currentPassword, hash) {
+		s.passwordAttempts.recordFailed(acc.ID)
+		d.PasswordError = "Incorrect current password"
+		render(w, r, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	s.passwordAttempts.clear(acc.ID)
+
+	newHash, err := hashPassword(newPassword)
+	if err != nil {
+		http.Error(w, "Could not hash password", http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.UpdatePassword(r.Context(), acc.ID, newHash); err != nil {
+		http.Error(w, "Could not update password", http.StatusInternalServerError)
+		return
+	}
+
+	d.PasswordSaved = true
+	oldSID, ok := s.currentSessionID(r)
+	if ok {
+		newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not rotate session after password change for account %d: %v\n", acc.ID, err)
+		} else if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, newSID); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not invalidate other sessions after password change for account %d: %v\n", acc.ID, err)
+		}
+	}
+
+	render(w, r, pages.Settings(d, acc.FtLogin))
+}
+
+// settingsData renders the current account/visibility state into the template's shape.
 func (s *Server) settingsData(acc store.Account, saved bool) model.SettingsData {
-	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved}
+	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email}
 	for _, t := range view.ToggleableSections {
 		d.Toggles = append(d.Toggles, model.SettingsToggle{
 			Key:     t.Key,

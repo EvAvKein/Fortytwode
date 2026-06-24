@@ -22,21 +22,23 @@ import (
 
 // Server holds the dependencies shared by all handlers.
 type Server struct {
-	store   *store.Store
-	cfg     config.Config
-	limiter *api42.Limiter // shared across all syncs to respect 42's per-app caps
-	jobs    *jobRegistry
-	secure  bool // mark cookies Secure (set when the redirect URI is https)
+	store            *store.Store
+	cfg              config.Config
+	limiter          *api42.Limiter // shared across all syncs to respect 42's per-app caps
+	jobs             *jobRegistry
+	secure           bool // mark cookies Secure (set when the redirect URI is https)
+	passwordAttempts *passwordAttemptLimiter
 }
 
 // Serve starts the web app, reading PORT (default 4242).
 func Serve(cfg config.Config, st *store.Store) error {
 	s := &Server{
-		store:   st,
-		cfg:     cfg,
-		limiter: api42.NewLimiter(),
-		jobs:    newJobRegistry(),
-		secure:  strings.HasPrefix(cfg.RedirectURI, "https://"),
+		store:            st,
+		cfg:              cfg,
+		limiter:          api42.NewLimiter(),
+		jobs:             newJobRegistry(),
+		secure:           strings.HasPrefix(cfg.RedirectURI, "https://"),
+		passwordAttempts: newPasswordAttemptLimiter(maxPasswordAttempts, passwordAttemptWindow),
 	}
 
 	// Periodically purge stale sync-cooldown rows and expired sessions
@@ -88,6 +90,8 @@ func (s *Server) routes() http.Handler {
 	api.HandleFunc("POST /login", s.handleLogin)
 	api.HandleFunc("POST /logout", s.handleLogout)
 	api.HandleFunc("POST /settings", s.handleSettings)
+	api.HandleFunc("POST /settings/email", s.handleSettingsEmail)
+	api.HandleFunc("POST /settings/password", s.handleSettingsPassword)
 	api.HandleFunc("POST /account/delete", s.handleDeleteAccount)
 
 	// Pages are top-level HTML GETs. The trailing method-less "/" is the
