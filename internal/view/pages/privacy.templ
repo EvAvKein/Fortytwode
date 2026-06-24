@@ -6,48 +6,79 @@ templ Privacy(viewerLogin string) {
 		<main id="main" class="centered">
 			<h1>Privacy</h1>
 			<p>
-				Fortytwode caches a copy of your 42 profile so it can show you — and, if
-				you opt in, others — a dashboard of your progress.
+				Fortytwode lets you view and share your 42 progress. This page explains what data we collect, how we use it, who can see it, and how you can manage or delete it.
 			</p>
 			<h2>What we store</h2>
+			<p>
+				When you sign in via 42, we sync and save a curated copy of your 42 data so you can view your progress:
+			</p>
 			<ul>
-				<li>Your own 42 profile: name, login, email, campus, wallet, evaluation points, cursus, skills, achievements and titles.</li>
-				<li>Your activity: projects, evaluations (marks, flags and feedback text), locations, events, quests and correction-point history.</li>
-				<li>
-					<strong>We remove other people's identities before storing.</strong>
-					Evaluations keep the outcome and feedback text, but the logins of
-					correctors, corrected students, teammates and feedback authors are
-					stripped during processing and never reach our database.
-				</li>
+				<li>Your 42 profile: name, login, email, campus, profile photo, wallet, coalition, evaluation points, cursus, skills, achievements, titles, and selection pool information.</li>
+				<li>Your 42 activity: projects, evaluations you gave or received, locations, events, quests, and your evaluation-point history.</li>
 			</ul>
-			<h2>What we don't store</h2>
 			<p>
-				The full raw 42 response is held only briefly, in memory, during a sync so
-				that you can download it — it is never written to our database. We discard
-				everything we don't use (evaluation guidelines, language and flag lists,
-				internal ids, and so on).
+				If you choose to register a Fortytwode account, we also store:
 			</p>
-			<h2>Lawful basis &amp; who can see it</h2>
+			<ul>
+				<li>Your email address.</li>
+				<li>A securely hashed password.</li>
+				<li>Your privacy settings.</li>
+				<li>Your account creation date.</li>
+				<li>Session information so you stay signed in.</li>
+			</ul>
 			<p>
-				We process your own data to provide the service you asked for. Your profile
-				is private by default — visible only to you and, for the sections you
-				choose, to other signed-in 42 users. Only when you make your profile public
-				in settings is it visible without an account.
+				We also keep short-lived sync records tied to your 42 identity so we can manage sync traffic and prevent abuse.
 			</p>
-			<h2>Retention &amp; deletion</h2>
+			<h2>How we use your data</h2>
 			<p>
-				Your snapshot is kept until you delete it. You can erase your account and
-				all stored data at any time from <a href="/settings">Settings</a> →
-				"Delete my data". Short-lived sync rate-limit records are purged
-				automatically.
+				We use this data to show you your progress, to let you manage sharing, and to keep Fortytwode running. For Fortytwode debugging and product improvement, we may review data in anonymized or aggregated form.
 			</p>
-			<h2>A note on feedback text</h2>
+			<h2>What we do not store</h2>
+			<ul>
+				<li>We do not have access to your 42 password.</li>
+				<li>We do not keep the full raw response from 42 permanently. It is only held briefly in memory during a sync so you can download it if you want. Once the sync ends, it expires automatically.</li>
+				<li>We discard anything we do not use, such as evaluation guidelines, internal identifiers, and system lists.</li>
+			</ul>
+			<h2>How we protect other people's identities</h2>
 			<p>
-				The feedback we keep is free-form and could, in rare cases, mention someone
-				by name; we don't edit its contents.
+				Before saving your evaluations, we remove the 42 usernames of evaluators, evaluated students, teammates, and feedback authors. The feedback text itself is kept, but mentions of those usernames are redacted. Because feedback is free-form, a name or other identifying detail might still appear in rare cases. We do not edit the content of feedback.
 			</p>
+			<h2>Who can see your data</h2>
+			<ul>
+				<li>You can always see all of your own data when signed in.</li>
+				<li>Other Fortytwode users who signed in through 42 can see your profile header (name, login, photo, campus, and cursus), and these sections by default: projects, evaluations, quests, titles, achievements, and coalition. You can make any of these sections private in settings.</li>
+				<li>These sections are private by default: locations, skills, contact email, points, evaluation-point history, and events. You can choose to share them.</li>
+				<li>If you turn on public visibility, anyone on the internet can view the sections you have chosen to share.</li>
+			</ul>
+			<h2>Cookies and login</h2>
+			<p>
+				We use cookies to keep you signed in, to protect the 42 login process, and to show sync progress. These cookies are short-lived or last for the duration of your session. Passwords you set are stored as secure hashes, not plain text. We use 42's OAuth service so you can sign in with your 42 account.
+			</p>
+			<h2>Third-party services</h2>
+			<p>
+				We rely on a small number of services to run Fortytwode:
+			</p>
+			<ul>
+				<li>42, for authentication and the data we sync.</li>
+				<li>Our hosting and database providers, for running the application and storing data.</li>
+				<li>Let's Encrypt, for secure internet connections.</li>
+			</ul>
+			<p>
+				We do not use analytics, advertising, tracking, or email delivery services.
+			</p>
+			<h2>Your rights</h2>
+			<p>
+				You have the right to access, update, export, restrict, object to, or delete your data. You can download your saved data at any time, and you can erase your account from <a href="/settings">Settings</a>. If you need help exercising any of these rights, contact us.
+			</p>
+			<h2>Retention and deletion</h2>
+			<ul>
+				<li>Your saved 42 data and account information are kept until you delete your account.</li>
+				<li>When you delete your account, your profile, activity, sessions, and password are removed immediately.</li>
+				<li>Some short-lived sync records are removed automatically within a short, fixed cleanup window after account deletion.</li>
+				<li>Server logs and backups are not removed by the in-app deletion button and are kept according to our normal operational schedule.</li>
+			</ul>
 			<h2>Contact</h2>
-			<p>Questions or requests: <a href="mailto:evavkein@gmail.com">evavkein@gmail.com</a>.</p>
+			<p>Questions or requests: Eve Keinan, <a href="mailto:evavkein@gmail.com">evavkein@gmail.com</a>.</p>
 		</main>
 	}
 }
