@@ -15,7 +15,7 @@ Conveniently export and browse all intra-net data from your [42](https://42.fr/)
 ## Description
 
 This project has two modes you can use:
-- A [web app](insert_domain_here): Authenticate with your 42 account, wait for the progress bar to finish, and download your data (either raw or curated) as JSON.  
+- A [web app](https://fortytwode.net): Authenticate with your 42 account, wait for the progress bar to finish, and download your data (either raw or curated) as JSON.
 After using the site to get your 42 data, you can registering an accountto post your profile on the website - this saves the data to Fortytwode's database so you can view/download it later. As a registered user you can choose which profile sections are visible to others, and even optionally opt-in for your profile to be visible on the open internet.
 - A command-line tool that authenticates you directly to the 42 network and writes your data to `./output/*.json`.
 
