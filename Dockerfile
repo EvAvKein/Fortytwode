@@ -20,6 +20,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 COPY --from=build /fortytwode /fortytwode
+RUN adduser -D -u 1000 app
+USER app
 EXPOSE 4242
 # ENTRYPOINT is just the binary with `serve` as the default command, so the same
 # image can run one-off subcommands (e.g. `docker compose run --rm app migrate`).
