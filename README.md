@@ -61,6 +61,8 @@ make dev                  # build + run the whole stack, watching for edits
 `make dev` brings up Postgres, the app, and an HTTP-only Nginx at <http://localhost:8080> via `docker compose watch` - any source edit rebuilds and restarts the app.
 The Postgres schema is applied on the first connection.
 
+The production site sits behind Cloudflare for DNS, CDN, and connection security.
+
 ### Commands
 
 | Command              | What it does                                                            |
