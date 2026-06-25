@@ -6,7 +6,7 @@ import (
 )
 
 func TestSectionPublic(t *testing.T) {
-	// locations, skills, contact, and points are private by default; others public by default; overrides win.
+	// coalitions, locations, skills, contact, and points are private by default; others public by default; overrides win.
 	for _, key := range []string{"locations", "skills", "contact", "points"} {
 		if SectionPublic(nil, key) {
 			t.Errorf("%s should be private by default", key)
@@ -15,8 +15,8 @@ func TestSectionPublic(t *testing.T) {
 	if !SectionPublic(nil, "projects_users") {
 		t.Error("projects should be public by default")
 	}
-	if !SectionPublic(nil, "coalitions") {
-		t.Error("coalitions should be public by default")
+	if SectionPublic(nil, "coalitions") {
+		t.Error("coalitions should be private by default")
 	}
 	if !SectionPublic(nil, "achievements") {
 		t.Error("achievements should be public by default")
@@ -68,8 +68,8 @@ func TestBuildVisibility(t *testing.T) {
 	if owner.Profile.Coalition == nil {
 		t.Fatal("owner should see the Coalition card")
 	}
-	if owner.Profile.Coalition.Private {
-		t.Error("owner's public-by-default Coalition card should not be badged Private")
+	if !owner.Profile.Coalition.Private {
+		t.Error("owner's private-by-default Coalition card should be badged Private")
 	}
 	if owner.Sections.Skills == nil {
 		t.Fatal("owner should see Skills")
@@ -97,8 +97,8 @@ func TestBuildVisibility(t *testing.T) {
 	if pub.Profile != nil && pub.Profile.Points != nil {
 		t.Error("non-owner should not see the Points Remaining card by default")
 	}
-	if pub.Profile == nil || pub.Profile.Coalition == nil {
-		t.Error("non-owner should see the Coalition card by default")
+	if pub.Profile != nil && pub.Profile.Coalition != nil {
+		t.Error("non-owner should not see the Coalition card by default")
 	}
 	if pub.Sections.Skills != nil {
 		t.Error("non-owner should not see Skills by default")
@@ -127,5 +127,8 @@ func TestBuildVisibility(t *testing.T) {
 	}
 	if opted.Sections.Skills == nil {
 		t.Error("non-owner should see Skills when opted public")
+	}
+	if opted.Profile == nil || opted.Profile.Coalition == nil {
+		t.Error("non-owner should see the Coalition card when opted public")
 	}
 }
