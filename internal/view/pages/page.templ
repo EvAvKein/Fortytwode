@@ -10,7 +10,7 @@ import (
 // then each collapsible panel rendered explicitly in order.
 // templ escapes every interpolated value, so no manual HTML-escaping is needed.
 templ Page(d model.PageData, viewerLogin string) {
-	@Layout(viewerLogin+"'s profile", viewerLogin, d.Login) {
+	@Layout(d.Login+"'s profile", viewerLogin, d.Login) {
 		if d.Owner {
 			<nav class="nav profile">
 				if d.CanResync {
