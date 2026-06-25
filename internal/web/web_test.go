@@ -1,9 +1,11 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/store"
+	"github.com/EvAvKein/Fortytwode/internal/view"
 )
 
 func TestHashVerify(t *testing.T) {
@@ -372,6 +375,59 @@ func TestSyncingPageHidesErrorActions(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, `id="sync-error-actions" class="spaced-apart hidden"`) {
 		t.Errorf("expected #sync-error-actions to start hidden, got:\n%s", body)
+	}
+}
+
+func TestParseVisibilityFormURLEncoded(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPatch, routes.APIAccountVisibility.URL(), strings.NewReader("is_public=on&section_projects_users=on"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	isPublic, sections, err := parseVisibilityForm(req)
+	if err != nil {
+		t.Fatalf("parseVisibilityForm returned error: %v", err)
+	}
+	if !isPublic {
+		t.Errorf("isPublic = %v, want true", isPublic)
+	}
+	if got, ok := sections["projects_users"]; !ok || !got {
+		t.Errorf("projects_users toggle = %v (ok=%v), want true/ok", got, ok)
+	}
+	if got, ok := sections["achievements"]; !ok || got {
+		t.Errorf("achievements toggle = %v (ok=%v), want false/ok", got, ok)
+	}
+	if got, ok := sections["skills"]; !ok || got {
+		t.Errorf("skills toggle = %v (ok=%v), want false/ok", got, ok)
+	}
+	if len(sections) != len(view.ToggleableSections) {
+		t.Errorf("toggle count = %d, want %d", len(sections), len(view.ToggleableSections))
+	}
+}
+
+func TestParseVisibilityFormMultipart(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	if err := writer.WriteField("section_locations", "on"); err != nil {
+		t.Fatalf("WriteField: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPatch, routes.APIAccountVisibility.URL(), &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	isPublic, sections, err := parseVisibilityForm(req)
+	if err != nil {
+		t.Fatalf("parseVisibilityForm returned error: %v", err)
+	}
+	if isPublic {
+		t.Errorf("isPublic = %v, want false", isPublic)
+	}
+	if got, ok := sections["locations"]; !ok || !got {
+		t.Errorf("locations toggle = %v (ok=%v), want true/ok", got, ok)
+	}
+	if got, ok := sections["projects_users"]; !ok || got {
+		t.Errorf("projects_users toggle = %v (ok=%v), want false/ok", got, ok)
+	}
+	if len(sections) != len(view.ToggleableSections) {
+		t.Errorf("toggle count = %d, want %d", len(sections), len(view.ToggleableSections))
 	}
 }
 

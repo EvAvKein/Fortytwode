@@ -600,14 +600,10 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	isPublic, sections, err := parseVisibilityForm(r)
+	if err != nil {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 		return
-	}
-	isPublic := r.FormValue("is_public") == "on"
-	sections := map[string]bool{}
-	for _, t := range view.ToggleableSections {
-		sections[t.Key] = r.FormValue("section_"+t.Key) == "on"
 	}
 	if err := s.store.UpdateVisibility(r.Context(), acc.ID, isPublic, sections); err != nil {
 		http.Error(w, "Could not save settings", http.StatusInternalServerError)
@@ -615,6 +611,24 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	acc.IsPublic, acc.Visibility = isPublic, sections
 	render(w, r, pages.Settings(s.settingsData(r.Context(), acc, true), acc.FtLogin))
+}
+
+func parseVisibilityForm(r *http.Request) (bool, map[string]bool, error) {
+	if err := r.ParseForm(); err != nil {
+		return false, nil, err
+	}
+	ctype := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(ctype, "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			return false, nil, err
+		}
+	}
+	isPublic := r.Form.Has("is_public")
+	sections := make(map[string]bool, len(view.ToggleableSections))
+	for _, t := range view.ToggleableSections {
+		sections[t.Key] = r.Form.Has("section_" + t.Key)
+	}
+	return isPublic, sections, nil
 }
 
 // handleSettingsEmail updates the account's email address after verifying the
