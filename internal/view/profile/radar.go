@@ -3,6 +3,7 @@ package profile
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/EvAvKein/Fortytwode/internal/view/model"
 )
@@ -47,7 +48,7 @@ func buildRadarData(skills []model.SkillBar) radarData {
 	// Concentric grid polygons at 20%, 40%, 60%, 80%, 100%.
 	for _, pct := range []int{20, 40, 60, 80, 100} {
 		pts := make([]radarPoint, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			pts[i] = radarDataPoint(radarCX, radarCY, radarGridR, i, n, pct)
 		}
 		d.GridPaths = append(d.GridPaths, polygonPath(pts))
@@ -84,22 +85,24 @@ func polygonPath(points []radarPoint) string {
 	if len(points) == 0 {
 		return ""
 	}
-	s := fmt.Sprintf("M %.1f %.1f", points[0].X, points[0].Y)
+	var b strings.Builder
+	fmt.Fprintf(&b, "M %.1f %.1f", points[0].X, points[0].Y)
 	for _, p := range points[1:] {
-		s += fmt.Sprintf(" L %.1f %.1f", p.X, p.Y)
+		fmt.Fprintf(&b, " L %.1f %.1f", p.X, p.Y)
 	}
-	s += " Z"
-	return s
+	b.WriteString(" Z")
+	return b.String()
 }
 
 // radarSummary builds a screen-reader-friendly text summary of the skills.
 func radarSummary(skills []model.SkillBar) string {
-	s := "Skills radar: "
+	var b strings.Builder
+	b.WriteString("Skills radar: ")
 	for i, sk := range skills {
 		if i > 0 {
-			s += ", "
+			b.WriteString(", ")
 		}
-		s += fmt.Sprintf("%s %s", sk.Name, sk.Level)
+		fmt.Fprintf(&b, "%s %s", sk.Name, sk.Level)
 	}
-	return s
+	return b.String()
 }
