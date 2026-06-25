@@ -113,8 +113,9 @@ func newJobRegistry() *jobRegistry {
 // create registers a new running job for clientKey and returns its id. It refuses
 // (ok=false) when that client already has a running job, so one client can't spawn
 // concurrent syncs that each burn 42 API budget before the per-42-user cooldown can
-// bite. A blank clientKey skips the cap. If the registry is at capacity, the oldest
-// job is evicted first (bounds worst-case RAM).
+// bite. A blank clientKey skips the cap. If the registry is at capacity the oldest
+// finished job is evicted first (bounds worst-case RAM); when every slot holds a
+// running job it refuses rather than evicting a live sync.
 func (r *jobRegistry) create(clientKey string) (id string, j *job, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -122,7 +123,11 @@ func (r *jobRegistry) create(clientKey string) (id string, j *job, ok bool) {
 		return "", nil, false
 	}
 	if len(r.jobs) >= r.maxJobs {
-		r.evictOldestLocked()
+		if !r.evictOldestFinishedLocked() {
+			// At capacity and every slot is an in-flight sync; refuse rather
+			// than evict a live job. Caller surfaces this as "server busy".
+			return "", nil, false
+		}
 	}
 	id = randomToken()
 	j = &job{status: jobRunning, clientKey: clientKey, createdAt: time.Now()}
@@ -165,17 +170,28 @@ func (r *jobRegistry) delete(id string) {
 	delete(r.jobs, id)
 }
 
-func (r *jobRegistry) evictOldestLocked() {
+// evictOldestFinishedLocked removes the oldest job that is no longer running,
+// to bound RAM at capacity. It never evicts a running job (that would kill a
+// live sync). Returns false when every job is still running.
+func (r *jobRegistry) evictOldestFinishedLocked() bool {
 	var oldestID string
 	var oldest time.Time
 	for id, j := range r.jobs {
-		if oldestID == "" || j.createdAt.Before(oldest) {
-			oldestID, oldest = id, j.createdAt
+		j.mu.Lock()
+		running, created := j.status == jobRunning, j.createdAt
+		j.mu.Unlock()
+		if running {
+			continue
+		}
+		if oldestID == "" || created.Before(oldest) {
+			oldestID, oldest = id, created
 		}
 	}
-	if oldestID != "" {
-		delete(r.jobs, oldestID)
+	if oldestID == "" {
+		return false
 	}
+	delete(r.jobs, oldestID)
+	return true
 }
 
 func (r *jobRegistry) sweepLoop() {
