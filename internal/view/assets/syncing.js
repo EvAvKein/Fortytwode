@@ -1,5 +1,6 @@
 (function () {
-	const apiPrefix = document.querySelector('meta[name="api-prefix"]')?.content || "/api/v1";
+	const apiPrefix =
+		document.querySelector('meta[name="api-prefix"]')?.content || "/api/v1";
 	const bar = document.getElementById("bar");
 	const streamPath = bar?.dataset.streamPath || "/sync/stream";
 	const eventStream = new EventSource(apiPrefix + streamPath);
