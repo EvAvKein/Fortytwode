@@ -96,6 +96,12 @@ fmt:
 	gofmt -w .
 	go tool templ fmt .
 
+# fmt-check: fail if any Go file is not gofmt-clean (used by `check`/CI). Runs
+# gofmt -w first to auto-fix, then -l to fail on anything that remained dirty
+# (e.g. a file that couldn't be parsed).
+fmt-check: fmt
+	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needs running on:"; echo "$$out"; exit 1; fi
+
 # vet: report suspicious constructs
 vet: generate
 	go vet ./...
@@ -105,7 +111,7 @@ vuln:
 	go tool govulncheck ./...
 
 # check: format, vet, scan for known CVEs, and build
-check: fmt vet vuln build
+check: fmt-check vet vuln build
 
 # tidy: prune go.mod / go.sum
 tidy:
@@ -120,4 +126,4 @@ clean:
 test:
 	go test ./...
 
-.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
+.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt fmt-check vet vuln check tidy clean test
