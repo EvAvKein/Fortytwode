@@ -20,12 +20,18 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"connect-src 'self'; " +
 	"form-action 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
 
-// securityHeaders sets the CSP on every response. It lives in the app (not just the
-// prod Nginx config) so dev and the standalone binary are covered too, and so the
-// policy stays next to the templates/assets whose shape it depends on.
+// securityHeaders sets the CSP and non-TLS security headers on every response.
+// It lives in the app (not just the prod Nginx config) so dev and the standalone
+// binary are covered too, and so the policy stays next to the templates/assets
+// whose shape it depends on. HSTS stays in the prod Nginx because it must only
+// be sent over HTTPS.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 		next.ServeHTTP(w, r)
 	})
 }
