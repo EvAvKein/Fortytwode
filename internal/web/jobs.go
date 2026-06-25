@@ -130,6 +130,14 @@ func (r *jobRegistry) create(clientKey string) (id string, j *job, ok bool) {
 	return id, j, true
 }
 
+// hasRunning reports whether clientKey currently has a running job. A blank key
+// is never tracked (the per-client cap is skipped), so it always reports false.
+func (r *jobRegistry) hasRunning(clientKey string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return clientKey != "" && r.hasRunningForLocked(clientKey)
+}
+
 // hasRunningForLocked reports whether clientKey already has a running job. The
 // caller holds r.mu; taking j.mu under it matches the create/sweep lock order.
 func (r *jobRegistry) hasRunningForLocked(clientKey string) bool {

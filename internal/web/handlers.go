@@ -169,9 +169,17 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// 42 API budget against the shared limiter before the per-42-user cooldown
 	// (enforced once /me reveals the user) can apply. The in-flight job's cookie
 	// is still set, so the progress page just picks it back up.
-	jobID, j, ok := s.jobs.create(s.clientKey(r, loggedIn))
+	clientKey := s.clientKey(r, loggedIn)
+	jobID, j, ok := s.jobs.create(clientKey)
 	if !ok {
-		http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
+		// create refuses in two cases: this client already has a running job
+		// (pick it back up on the syncing page), or the registry is full of
+		// other clients' in-flight syncs (transient: show a styled 503).
+		if s.jobs.hasRunning(clientKey) {
+			http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
+			return
+		}
+		renderStatus(w, r, http.StatusServiceUnavailable, pages.ServerBusy(s.viewerLogin(r)))
 		return
 	}
 	s.setCookie(w, jobCookie, jobID, s.jobs.ttl)

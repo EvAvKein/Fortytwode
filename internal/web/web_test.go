@@ -166,6 +166,39 @@ func TestCreateRejectsConcurrentClient(t *testing.T) {
 	}
 }
 
+func TestHasRunning(t *testing.T) {
+	r := newJobRegistry()
+
+	if r.hasRunning("ip:1.2.3.4") {
+		t.Error("no job started yet: hasRunning should be false")
+	}
+
+	_, j, ok := r.create("ip:1.2.3.4")
+	if !ok {
+		t.Fatal("create should be accepted")
+	}
+	if !r.hasRunning("ip:1.2.3.4") {
+		t.Error("a running job for the client: hasRunning should be true")
+	}
+	if r.hasRunning("ip:5.6.7.8") {
+		t.Error("a different client has no job: hasRunning should be false")
+	}
+
+	// A finished job no longer counts as running.
+	j.finish(nil, 0, "")
+	if r.hasRunning("ip:1.2.3.4") {
+		t.Error("finished job: hasRunning should be false")
+	}
+
+	// A blank key is never tracked, so it always reports false.
+	if _, _, ok := r.create(""); !ok {
+		t.Fatal("blank-key create should be accepted")
+	}
+	if r.hasRunning("") {
+		t.Error("blank client key should always report not-running")
+	}
+}
+
 func TestSecureCookieFlag(t *testing.T) {
 	for _, secure := range []bool{false, true} {
 		s := &Server{secure: secure}

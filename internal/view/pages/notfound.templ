@@ -23,3 +23,15 @@ templ ProfileNotFound(login string, viewerLogin string) {
 		</main>
 	}
 }
+
+// ServerBusy is shown when a sync can't start because the server is at its
+// in-flight-job capacity. It is a transient condition; the user can retry.
+templ ServerBusy(viewerLogin string) {
+	@Layout("Server busy", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Server busy</h1>
+			<p>Too many syncs are running right now. Please wait a moment and try again.</p>
+			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) }>Try again</a>
+		</main>
+	}
+}
