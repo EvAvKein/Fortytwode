@@ -35,6 +35,9 @@ type radarData struct {
 // buildRadarData pre-computes all SVG coordinates for the given skills.
 func buildRadarData(skills []model.SkillBar) radarData {
 	n := len(skills)
+	if n == 0 {
+		return radarData{Summary: radarSummary(skills)}
+	}
 	d := radarData{
 		GridPaths: make([]string, 0, 5),
 		DataDots:  make([]radarDot, 0, n),
@@ -70,6 +73,9 @@ func radarDataPoint(cx, cy, r float64, i, n, pct int) radarPoint {
 
 // radarAngle places the first axis at 12 o'clock and proceeds clockwise.
 func radarAngle(i, n int) float64 {
+	if n == 0 {
+		return 0
+	}
 	return -math.Pi/2 + 2*math.Pi*float64(i)/float64(n)
 }
 
