@@ -466,14 +466,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(r.FormValue("email"))
 	password := r.FormValue("password")
+	if !s.loginAttempts.allowed(email) {
+		renderStatus(w, r, http.StatusTooManyRequests, pages.LoginForm("Too many login attempts, try again later", ""))
+		return
+	}
 	acc, hash, err := s.store.AccountByEmail(r.Context(), email)
 	if err != nil {
 		hash = dummyHash // burn the same argon2 time so a missing email isn't a timing oracle
 	}
 	if err != nil || !verifyPassword(password, hash) {
+		s.loginAttempts.recordFailed(email)
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Invalid email or password.", ""))
 		return
 	}
+	s.loginAttempts.clear(email)
 	if err := s.startSession(w, r, acc.ID); err != nil {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
@@ -516,6 +522,9 @@ func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token s
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if s.rejectCrossSite(w, r) {
+		return
+	}
 	s.endSession(w, r)
 	http.Redirect(w, r, routes.PageHome, http.StatusSeeOther)
 }
@@ -523,6 +532,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 // handleDeleteAccount erases the logged-in account and everything tied to it (GDPR
 // Art. 17), ends the session, and returns home.
 func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	if s.rejectCrossSite(w, r) {
+		return
+	}
 	acc, ok := s.currentAccount(r)
 	if !ok {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))

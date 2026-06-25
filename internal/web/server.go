@@ -28,7 +28,8 @@ type Server struct {
 	limiter          *api42.Limiter // shared across all syncs to respect 42's per-app caps
 	jobs             *jobRegistry
 	secure           bool // mark cookies Secure (set when the redirect URI is https)
-	passwordAttempts *passwordAttemptLimiter
+	passwordAttempts *attemptLimiter[int64]
+	loginAttempts    *attemptLimiter[string]
 }
 
 // Serve starts the web app, reading PORT (default 4242).
@@ -39,7 +40,8 @@ func Serve(cfg config.Config, st *store.Store) error {
 		limiter:          api42.NewLimiter(),
 		jobs:             newJobRegistry(),
 		secure:           strings.HasPrefix(cfg.RedirectURI, "https://"),
-		passwordAttempts: newPasswordAttemptLimiter(maxPasswordAttempts, passwordAttemptWindow),
+		passwordAttempts: newAttemptLimiter[int64](maxPasswordAttempts, passwordAttemptWindow),
+		loginAttempts:    newAttemptLimiter[string](maxLoginAttempts, loginAttemptWindow),
 	}
 
 	// Periodically purge stale sync-cooldown rows and expired sessions
@@ -54,6 +56,8 @@ func Serve(cfg config.Config, st *store.Store) error {
 			if _, err := st.PurgeExpiredSessions(context.Background()); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: purge sessions: %v\n", err)
 			}
+			s.loginAttempts.prune()
+			s.passwordAttempts.prune()
 		}
 	}()
 

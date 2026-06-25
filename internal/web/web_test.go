@@ -191,7 +191,7 @@ func TestNotFoundHandler(t *testing.T) {
 }
 
 func TestPasswordAttemptLimiter(t *testing.T) {
-	limiter := newPasswordAttemptLimiter(3, 100*time.Millisecond)
+	limiter := newAttemptLimiter[int64](3, 100*time.Millisecond)
 	const id int64 = 1
 
 	// The first three attempts are allowed.
@@ -223,6 +223,99 @@ func TestPasswordAttemptLimiter(t *testing.T) {
 	// Different accounts are tracked independently.
 	if !limiter.allowed(2) {
 		t.Error("other accounts should not be blocked")
+	}
+}
+
+func TestLoginAttemptLimiter(t *testing.T) {
+	limiter := newAttemptLimiter[string](3, 100*time.Millisecond)
+	email := "user@example.com"
+
+	for i := 0; i < 3; i++ {
+		if !limiter.allowed(email) {
+			t.Fatalf("attempt %d should be allowed", i+1)
+		}
+		limiter.recordFailed(email)
+	}
+
+	if limiter.allowed(email) {
+		t.Error("fourth attempt should be blocked")
+	}
+
+	time.Sleep(150 * time.Millisecond)
+	if !limiter.allowed(email) {
+		t.Error("attempts should be allowed after the window expires")
+	}
+
+	limiter.recordFailed(email)
+	limiter.clear(email)
+	if !limiter.allowed(email) {
+		t.Error("clear should reset the limiter")
+	}
+
+	otherEmail := "other@example.com"
+	if !limiter.allowed(otherEmail) {
+		t.Error("other emails should not be blocked")
+	}
+}
+
+func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
+	limiter := newAttemptLimiter[string](2, 50*time.Millisecond)
+	email := "prune@example.com"
+
+	limiter.recordFailed(email)
+	limiter.recordFailed(email)
+	if limiter.allowed(email) {
+		t.Error("should be blocked after max attempts")
+	}
+
+	time.Sleep(80 * time.Millisecond)
+	if !limiter.allowed(email) {
+		t.Error("should be allowed after window expires")
+	}
+	if len(limiter.attempts) != 0 {
+		t.Errorf("stale map key not pruned: got %d entries, want 0", len(limiter.attempts))
+	}
+}
+
+func TestLoginAttemptLimiterPrune(t *testing.T) {
+	limiter := newAttemptLimiter[string](5, 50*time.Millisecond)
+
+	limiter.recordFailed("a@example.com")
+	limiter.recordFailed("b@example.com")
+	if len(limiter.attempts) != 2 {
+		t.Fatalf("setup: got %d entries, want 2", len(limiter.attempts))
+	}
+
+	limiter.prune()
+	if len(limiter.attempts) != 2 {
+		t.Errorf("prune should not remove entries still in window: got %d, want 2", len(limiter.attempts))
+	}
+
+	time.Sleep(80 * time.Millisecond)
+	limiter.prune()
+	if len(limiter.attempts) != 0 {
+		t.Errorf("prune should remove expired entries: got %d, want 0", len(limiter.attempts))
+	}
+}
+
+func TestPasswordAttemptLimiterPrune(t *testing.T) {
+	limiter := newAttemptLimiter[int64](5, 50*time.Millisecond)
+
+	limiter.recordFailed(1)
+	limiter.recordFailed(2)
+	if len(limiter.attempts) != 2 {
+		t.Fatalf("setup: got %d entries, want 2", len(limiter.attempts))
+	}
+
+	limiter.prune()
+	if len(limiter.attempts) != 2 {
+		t.Errorf("prune should not remove entries still in window: got %d, want 2", len(limiter.attempts))
+	}
+
+	time.Sleep(80 * time.Millisecond)
+	limiter.prune()
+	if len(limiter.attempts) != 0 {
+		t.Errorf("prune should remove expired entries: got %d, want 0", len(limiter.attempts))
 	}
 }
 

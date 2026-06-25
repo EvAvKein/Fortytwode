@@ -31,6 +31,12 @@ const (
 	passwordAttemptWindow = 15 * time.Minute
 )
 
+// Per-email failed-login rate limit.
+const (
+	maxLoginAttempts   = 5
+	loginAttemptWindow = 15 * time.Minute
+)
+
 // argon2id parameters (OWASP-recommended baseline). Encoded into each hash, so
 // they can be tuned later without breaking existing hashes.
 const (
@@ -168,55 +174,79 @@ func (s *Server) rotateSession(w http.ResponseWriter, r *http.Request, accountID
 	return newID, nil
 }
 
-// passwordAttemptLimiter tracks recent failed password attempts per account.
-// It is intentionally in-memory and non-persistent: a restart clears it.
-type passwordAttemptLimiter struct {
+// attemptLimiter tracks recent failed attempts keyed by an arbitrary comparable
+// value (account ID, email, etc.). It is intentionally in-memory and
+// non-persistent: a restart clears it. Periodic calls to prune() free memory
+// from keys that are no longer actively failing.
+type attemptLimiter[T comparable] struct {
 	mu       sync.Mutex
-	attempts map[int64][]time.Time
+	attempts map[T][]time.Time
 	max      int
 	window   time.Duration
 }
 
-func newPasswordAttemptLimiter(max int, window time.Duration) *passwordAttemptLimiter {
-	return &passwordAttemptLimiter{
-		attempts: make(map[int64][]time.Time),
+func newAttemptLimiter[T comparable](max int, window time.Duration) *attemptLimiter[T] {
+	return &attemptLimiter[T]{
+		attempts: make(map[T][]time.Time),
 		max:      max,
 		window:   window,
 	}
 }
 
-// allowed reports whether the account may currently attempt a password check.
-// It garbage-collects stale entries but does not record a new failure here.
-func (p *passwordAttemptLimiter) allowed(accountID int64) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.countRecentLocked(accountID) < p.max
+func (a *attemptLimiter[T]) allowed(key T) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.countRecentLocked(key) < a.max
 }
 
-// recordFailed records one failed password attempt for the account.
-func (p *passwordAttemptLimiter) recordFailed(accountID int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.attempts[accountID] = append(p.attempts[accountID], time.Now())
+func (a *attemptLimiter[T]) recordFailed(key T) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.attempts[key] = append(a.attempts[key], time.Now())
 }
 
-// clear removes the failure history for the account after a successful check.
-func (p *passwordAttemptLimiter) clear(accountID int64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	delete(p.attempts, accountID)
+func (a *attemptLimiter[T]) clear(key T) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.attempts, key)
 }
 
-func (p *passwordAttemptLimiter) countRecentLocked(accountID int64) int {
-	cutoff := time.Now().Add(-p.window)
-	list := p.attempts[accountID]
+// prune removes all entries whose timestamps have fully expired. It is safe to
+// call from a background goroutine; it does not interact with the rate-limit
+// check path.
+func (a *attemptLimiter[T]) prune() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	cutoff := time.Now().Add(-a.window)
+	for key, list := range a.attempts {
+		kept := list[:0]
+		for _, t := range list {
+			if t.After(cutoff) {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) == 0 {
+			delete(a.attempts, key)
+		} else {
+			a.attempts[key] = kept
+		}
+	}
+}
+
+func (a *attemptLimiter[T]) countRecentLocked(key T) int {
+	cutoff := time.Now().Add(-a.window)
+	list := a.attempts[key]
 	kept := list[:0]
 	for _, t := range list {
 		if t.After(cutoff) {
 			kept = append(kept, t)
 		}
 	}
-	p.attempts[accountID] = kept
+	if len(kept) == 0 {
+		delete(a.attempts, key)
+	} else {
+		a.attempts[key] = kept
+	}
 	return len(kept)
 }
 
