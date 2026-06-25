@@ -2,12 +2,17 @@
 	const apiPrefix =
 		document.querySelector('meta[name="api-prefix"]')?.content || "/api/v1";
 	const bar = document.getElementById("bar");
-	const streamPath = bar?.dataset.streamPath || "/sync/stream";
-	const eventStream = new EventSource(apiPrefix + streamPath);
 	const label = document.getElementById("label");
 	const error = document.getElementById("error");
 	const errorActions = document.getElementById("sync-error-actions");
 	const successActions = document.getElementById("sync-success-actions");
+
+	// Not the syncing page (or markup changed): do nothing rather than throw or
+	// open a stray SSE connection.
+	if (!bar || !label || !error || !errorActions || !successActions) return;
+
+	const streamPath = bar.dataset.streamPath || "/sync/stream";
+	const eventStream = new EventSource(apiPrefix + streamPath);
 
 	/** @param {{total: number, step: number}} data*/
 	function percentage(data) {
