@@ -45,6 +45,7 @@ var ToggleableSections = []struct{ Key, Label string }{
 // sectionPrivateByDefault lists sections hidden from non-owners unless the owner
 // explicitly opts them public.
 var sectionPrivateByDefault = map[string]bool{
+	"coalitions":                 true,
 	"locations":                  true,
 	"skills":                     true,
 	"contact":                    true,
