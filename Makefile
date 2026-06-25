@@ -59,6 +59,13 @@ schema:
 	  docker compose exec -T db pg_dump --schema-only --no-owner -U fortytwode fortytwode; } \
 	  > internal/store/schema.sql
 
+# pull: fetch latest changes from the remote
+pull:
+	git pull
+
+# update-prod: pull, migrate, and relaunch prod
+update-prod: pull migrate prod
+
 # down: stop and remove the stack's containers
 down:
 	docker compose down
@@ -113,4 +120,4 @@ clean:
 test:
 	go test ./...
 
-.PHONY: build generate dev prod cert deploy migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
+.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt vet vuln check tidy clean test
