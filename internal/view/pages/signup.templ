@@ -11,8 +11,10 @@ templ SignupForm(errMsg string, expired bool, viewerLogin string) {
 			<h1>Create an account</h1>
 			if expired {
 				<p class="error">{ errMsg }</p>
-				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Sync again</a>
-				<a class="muted" href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
+				<div class="spaced-apart">
+					<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Sync again</a>
+					<a href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
+				</div>
 			} else {
 				<p class="muted">Saves the 42 data you just synced to a profile you can share.</p>
 				if errMsg != "" {
