@@ -1,4 +1,4 @@
-// Command fortytwode has three commands:
+// Command fortytwode has the following commands:
 //
 //	fortytwode fetch          authenticate with 42 and save your raw data to ./output/*.json
 //	fortytwode fetch curated  same, but write only ./output/curated.json (what the DB would store)

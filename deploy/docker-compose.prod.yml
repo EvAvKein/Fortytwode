@@ -1,6 +1,6 @@
 # Production override. Layer it on the default (dev) stack:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-# Use `make deploy` (./deploy.sh) for a first deploy or a renewal — it obtains the
+# Use `make deploy` for a first deploy or a renewal — it obtains the
 # Let's Encrypt cert (docker-compose.cert.yml) before bringing this up. Set DOMAIN
 # and CERTBOT_EMAIL in .env and register https://$DOMAIN/... on your 42 OAuth app.
 services:

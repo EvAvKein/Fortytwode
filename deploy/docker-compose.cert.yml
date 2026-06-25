@@ -1,6 +1,6 @@
 # One-shot stack that obtains (or renews) the Let's Encrypt certificate via the
-# HTTP-01 webroot challenge, then exits. Run it with port 80 free — `deploy.sh`
-# (`make deploy`) sequences it before the prod stack. Certs land on the host at
+# HTTP-01 webroot challenge, then exits. Run it with port 80 free — `make deploy`
+# sequences it before the prod stack. Certs land on the host at
 # /etc/letsencrypt, which the prod Nginx mounts read-only.
 #
 # Needs DOMAIN and CERTBOT_EMAIL from .env. Re-running is safe: --keep-until-expiring
