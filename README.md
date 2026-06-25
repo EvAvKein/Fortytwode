@@ -21,7 +21,7 @@ After using the site to get your 42 data, you can registering an accountto post 
 
 ## Setup
 
-Both modes authenticate against a 42 OAuth application, and require a 42 account.
+Both modes authenticate against a 42 OAuth application, and require a 42 account.  
 Create one at <https://profile.intra.42.fr/oauth/applications>, then copy its credentials into a `.env`:
 
 ```sh

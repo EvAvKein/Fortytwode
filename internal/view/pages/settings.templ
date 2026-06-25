@@ -28,10 +28,10 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 			<form method="post" action={ routes.APIAccountVisibility.URL() } data-method={ routes.APIAccountVisibility.MethodLower() } class="form">
 				<label class="check">
 					<input type="checkbox" name="is_public" checked?={ d.IsPublic }/>
-					Make my profile viewable without a Fortytwode account
+					Make my profile viewable without a 42 or Fortytwode account
 				</label>
 				<fieldset>
-					<legend>Sections shown to other viewers</legend>
+					<legend>Sections visible to other viewers</legend>
 					for _, t := range d.Toggles {
 						<label class="check">
 							<input type="checkbox" name={ "section_" + t.Key } checked?={ t.Public }/>
@@ -84,13 +84,13 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 				<button type="submit" class="button">Update password</button>
 			</form>
 			<h2>My data</h2>
-			<p class="muted">Download a copy of the 42 data we have stored for you.</p>
+			<p class="muted">Download a copy of the saved 42 data.</p>
 			<p>
 				<a class="button" href={ templ.SafeURL(routes.APIAccountDownload.URL()) }>Download saved data</a>
 			</p>
 			<div class="danger-zone">
 				<h2>Delete my data</h2>
-				<p class="muted">Permanently erase your account and the stored 42 snapshot. This can't be undone.</p>
+				<p class="muted">Permanently erase your account and the stored 42 snapshot.<br/>This can't be undone.</p>
 				<form method="post" action={ routes.APIAccountDelete.URL() } data-method={ routes.APIAccountDelete.MethodLower() } data-confirm="Permanently delete your account and all stored data? This cannot be undone.">
 					<button type="submit" class="button danger">Delete my data</button>
 				</form>
