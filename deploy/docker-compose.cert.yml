@@ -11,7 +11,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./deploy/nginx/cert.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/cert.conf:/etc/nginx/nginx.conf:ro
       - /tmp/acme_challenge:/tmp/acme_challenge
 
   certbot:
