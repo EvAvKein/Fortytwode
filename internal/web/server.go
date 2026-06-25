@@ -131,5 +131,3 @@ func renderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Co
 		fmt.Fprintf(os.Stderr, "warning: render failed: %v\n", err)
 	}
 }
-
-
