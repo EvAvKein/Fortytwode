@@ -86,11 +86,11 @@ type EvalItem struct {
 // KV is one labelled value in the profile header.
 type KV struct{ Key, Value string }
 
-// SkillBar is a single skill with a proportional bar (Style = "width:NN%", Pct = NN).
+// SkillBar is a single skill with a proportional bar (Pct = NN).
 type SkillBar struct {
-	Name, Level, Style string
-	Pct                int
-	Index              int // 1-based number shown on the radar dot and in the legend
+	Name, Level string
+	Pct         int
+	Index       int // 1-based number shown on the radar dot and in the legend
 }
 
 // CoalitionBadge is the coalition indicator in the header (Color = "#hex").

@@ -565,43 +565,6 @@ ol.evals {
 	}
 }
 
-.skills {
-	display: grid;
-	grid-template-columns: auto 1fr auto;
-	gap: 0.35rem 0.7rem;
-	align-items: center;
-	margin-top: 0.9rem;
-
-	.skill {
-		display: contents;
-
-		.skill-name {
-			color: var(--muted);
-			font-size: 0.8rem;
-		}
-
-		.bar {
-			display: block;
-			height: 8px;
-			background: #0c0e12;
-			border: 1px solid var(--border);
-			border-radius: 999px;
-			overflow: hidden;
-
-			.bar-fill {
-				display: block;
-				height: 100%;
-				background: var(--accent);
-			}
-		}
-
-		.skill-level {
-			font-size: 0.8rem;
-			text-align: right;
-		}
-	}
-}
-
 .sr-only {
 	position: absolute;
 	width: 1px;

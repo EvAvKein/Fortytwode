@@ -247,7 +247,6 @@ func topSkills(cursus []snapshot.Cursus) []model.SkillBar {
 		bars[i] = model.SkillBar{
 			Name:  s.name,
 			Level: fmt.Sprintf("%.2f", s.level),
-			Style: fmt.Sprintf("width:%d%%", pct),
 			Pct:   pct,
 			Index: i + 1,
 		}
