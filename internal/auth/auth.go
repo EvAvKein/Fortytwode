@@ -246,7 +246,7 @@ func openBrowser(rawURL string) {
 	case "darwin":
 		cmd = "open"
 	case "windows":
-		cmd, args = "cmd", []string{"/c", "start"}
+		cmd, args = "cmd", []string{"/c", "start", ""} // empty title arg so URLs with & aren't misparsed
 	default:
 		cmd = "xdg-open"
 	}
