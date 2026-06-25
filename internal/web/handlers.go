@@ -34,6 +34,13 @@ func (s *Server) viewerLogin(r *http.Request) string {
 	return ""
 }
 
+// canResync reports whether the account is outside the 42 sync cooldown and is
+// therefore allowed to start a new re-sync.
+func (s *Server) canResync(ctx context.Context, acc store.Account) bool {
+	_, active, _, err := s.store.SyncCooldown(ctx, acc.FtID, syncCooldown)
+	return err == nil && !active
+}
+
 // handleHome shows the landing page.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	render(w, r, pages.Landing(s.viewerLogin(r)))
@@ -558,6 +565,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
 			d.LastSynced = "Synced: " + ts
 		}
+		d.CanResync = s.canResync(r.Context(), acc)
 	}
 	render(w, r, pages.Page(d, s.viewerLogin(r)))
 }
@@ -568,7 +576,7 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
-	render(w, r, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
+	render(w, r, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -581,7 +589,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 		return
 	}
 	isPublic := r.FormValue("is_public") == "on"
@@ -594,7 +602,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc.IsPublic, acc.Visibility = isPublic, sections
-	render(w, r, pages.Settings(s.settingsData(acc, true), acc.FtLogin))
+	render(w, r, pages.Settings(s.settingsData(r.Context(), acc, true), acc.FtLogin))
 }
 
 // handleSettingsEmail updates the account's email address after verifying the
@@ -610,14 +618,14 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 		return
 	}
 
 	currentPassword := r.FormValue("current_password")
 	newEmail := strings.TrimSpace(r.FormValue("email"))
 
-	d := s.settingsData(acc, false)
+	d := s.settingsData(r.Context(), acc, false)
 	d.Email = newEmail
 
 	if currentPassword == "" || !validEmail(newEmail) {
@@ -653,7 +661,7 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	acc.Email = newEmail
-	d = s.settingsData(acc, false)
+	d = s.settingsData(r.Context(), acc, false)
 	d.Email = newEmail
 	d.EmailSaved = true
 
@@ -683,7 +691,7 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(acc, false), acc.FtLogin))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 		return
 	}
 
@@ -691,7 +699,7 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 	newPassword := r.FormValue("new_password")
 	confirmPassword := r.FormValue("confirm_password")
 
-	d := s.settingsData(acc, false)
+	d := s.settingsData(r.Context(), acc, false)
 
 	if currentPassword == "" || len(newPassword) < 8 {
 		d.PasswordError = "Enter your current password and a new password of at least 8 characters"
@@ -744,8 +752,8 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 }
 
 // settingsData renders the current account/visibility state into the template's shape.
-func (s *Server) settingsData(acc store.Account, saved bool) model.SettingsData {
-	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email}
+func (s *Server) settingsData(ctx context.Context, acc store.Account, saved bool) model.SettingsData {
+	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email, CanResync: s.canResync(ctx, acc)}
 	if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
 		d.LastSynced = "Synced: " + ts
 	}

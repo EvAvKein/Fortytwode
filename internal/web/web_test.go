@@ -1,14 +1,18 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/routes"
+	"github.com/EvAvKein/Fortytwode/internal/store"
 )
 
 func TestHashVerify(t *testing.T) {
@@ -262,5 +266,95 @@ func TestLogoutRedirectsWithSeeOther(t *testing.T) {
 	}
 	if got := rec.Header().Get("Location"); got != routes.PageHome {
 		t.Errorf("DELETE %s Location = %q, want %q", routes.APILogOut.URL(), got, routes.PageHome)
+	}
+}
+
+func TestSyncingPageHidesErrorActions(t *testing.T) {
+	s := &Server{}
+	rec := httptest.NewRecorder()
+	s.handleSyncing(rec, httptest.NewRequest(http.MethodGet, routes.PageSyncing, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `id="sync-error-actions" class="spaced-apart hidden"`) {
+		t.Errorf("expected #sync-error-actions to start hidden, got:\n%s", body)
+	}
+}
+
+// testStore opens the database named by DATABASE_URL, skipping the test when it
+// is unset or unreachable (so `go test ./...` stays hermetic without Postgres).
+func testStore(t *testing.T) *store.Store {
+	t.Helper()
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("set DATABASE_URL to run integration tests")
+	}
+	st, err := store.Open(context.Background(), dsn)
+	if err != nil {
+		t.Skipf("database unreachable: %v", err)
+	}
+	if err := st.Ping(context.Background()); err != nil {
+		st.Close()
+		t.Skipf("database unreachable: %v", err)
+	}
+	t.Cleanup(st.Close)
+	return st
+}
+
+func TestProfileHidesResyncDuringCooldown(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	unique := time.Now().UnixNano()
+	email := fmt.Sprintf("user-%d@e.st", unique)
+	login := fmt.Sprintf("tester%d", unique)
+	ftID := unique
+
+	data := map[string]json.RawMessage{
+		"me": json.RawMessage(`{"login":"` + login + `"}`),
+	}
+	id, err := st.CreateAccount(ctx, email, "hash$value", ftID, login, data)
+	if err != nil {
+		t.Fatalf("create account: %v", err)
+	}
+	t.Cleanup(func() { _ = st.DeleteAccount(ctx, id) })
+
+	sid := randomToken()
+	if err := st.CreateSession(ctx, sid, id, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	t.Cleanup(func() { _ = st.DeleteSession(ctx, sid) })
+
+	s := &Server{store: st}
+	h := s.routes()
+	req := func() *http.Request {
+		r := httptest.NewRequest(http.MethodGet, routes.PageProfile(login), nil)
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: sid})
+		return r
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile before cooldown: status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Re-sync") {
+		t.Errorf("profile before cooldown should contain Re-sync link")
+	}
+
+	if _, allowed, _, err := st.ReserveSync(ctx, ftID, syncCooldown); err != nil {
+		t.Fatalf("reserve cooldown: %v", err)
+	} else if !allowed {
+		t.Fatal("expected cooldown slot to be free for a fresh account")
+	}
+	t.Cleanup(func() { _ = st.ReleaseSync(ctx, ftID) })
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile during cooldown: status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "Re-sync") {
+		t.Errorf("profile during cooldown should not contain Re-sync link")
 	}
 }

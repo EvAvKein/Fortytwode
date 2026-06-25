@@ -20,6 +20,7 @@
 			"Fetching " + data.name + "… (" + data.step + "/" + data.total + ")";
 		label.classList.remove("hidden");
 		error.classList.add("hidden");
+		errorActions.classList.add("hidden");
 	});
 
 	eventStream.addEventListener("done", function (event) {

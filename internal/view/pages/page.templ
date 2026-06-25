@@ -13,7 +13,9 @@ templ Page(d model.PageData, viewerLogin string) {
 	@Layout(viewerLogin+"'s profile", viewerLogin, d.Login) {
 		if d.Owner {
 			<nav class="nav profile">
-				<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
+				if d.CanResync {
+					<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
+				}
 				if d.LastSynced != "" {
 					<span class="muted">{ d.LastSynced }</span>
 				}

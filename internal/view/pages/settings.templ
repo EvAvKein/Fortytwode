@@ -10,7 +10,9 @@ import (
 templ Settings(d model.SettingsData, viewerLogin string) {
 	@Layout("Settings", viewerLogin, "") {
 		<nav class="nav">
-			<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
+			if d.CanResync {
+				<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
+			}
 			if d.LastSynced != "" {
 				<span class="muted">{ d.LastSynced }</span>
 			}

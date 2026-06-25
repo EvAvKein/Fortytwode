@@ -117,6 +117,7 @@ type PageData struct {
 	Owner      bool   // viewer owns this profile -> show the owner nav
 	Login      string // 42 login of the profile being viewed (for links)
 	LastSynced string // formatted "Synced: ..." timestamp for owners; empty otherwise
+	CanResync  bool   // true when the owner's cooldown has expired
 }
 
 // SettingsToggle is one section's public/private switch on the settings page.
@@ -134,6 +135,7 @@ type SettingsData struct {
 	Login         string
 	Saved         bool
 	LastSynced    string // formatted "Synced: ..." timestamp
+	CanResync     bool   // true when the owner's cooldown has expired
 	Email         string
 	EmailError    string
 	EmailSaved    bool
