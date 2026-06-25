@@ -30,7 +30,7 @@ func deref(p *string) string {
 
 func dashInt(p *int) string {
 	if p == nil {
-		return "—"
+		return "-"
 	}
 	return strconv.Itoa(*p)
 }
@@ -42,14 +42,14 @@ func commaInt(n int) string {
 
 func dashFloat(p *float64) string {
 	if p == nil {
-		return "—"
+		return "-"
 	}
 	return strconv.FormatFloat(*p, 'f', -1, 64)
 }
 
 func orDash(s string) string {
 	if s == "" {
-		return "—"
+		return "-"
 	}
 	return s
 }

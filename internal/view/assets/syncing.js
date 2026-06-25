@@ -50,7 +50,7 @@
 		} catch (_) {}
 		error.textContent =
 			msg ||
-			"This sync is no longer active — it may have finished, expired, or the connection dropped. You can start a new one below.";
+			"This sync is no longer active: It may have finished, expired, or the connection dropped. You can start a new one below.";
 		label.classList.add("hidden");
 		error.classList.remove("hidden");
 		successActions.classList.add("hidden");

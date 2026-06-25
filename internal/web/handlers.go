@@ -75,7 +75,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // caps still bound those.
 func (s *Server) rejectCrossSite(w http.ResponseWriter, r *http.Request) bool {
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-		http.Error(w, "cross-site request blocked — use the form on the site", http.StatusForbidden)
+		http.Error(w, "cross-site request blocked. Use the form on the site", http.StatusForbidden)
 		return true
 	}
 	return false

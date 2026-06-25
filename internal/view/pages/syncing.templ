@@ -28,7 +28,7 @@ templ Syncing(viewerLogin string, profileLogin string) {
 					if viewerLogin == "" {
 						<a id="signup-action" href={ templ.SafeURL(routes.PageSignup) }>Sign up to keep your profile</a>
 						<form method={ routes.APILogInSync.MethodLower() } action={ routes.APILogInSync.URL() } class="inline hidden" id="signin-action">
-							<button type="submit" class="link-button">Account detected — sign in</button>
+							<button type="submit" class="link-button">Account detected: Sign in</button>
 						</form>
 					}
 				</div>
