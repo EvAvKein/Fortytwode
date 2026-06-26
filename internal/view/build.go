@@ -112,7 +112,7 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Titles, "titles_users", owner, vis, func() (model.TableSection, bool) {
-		return buildTitles(load[snapshot.Title](snaps, "titles_users"))
+		return buildTitles(load[snapshot.Title](snaps, "titles_users"), me.Login)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Achievements, "achievements", owner, vis, func() (model.TableSection, bool) { return buildAchievements(me) },
@@ -426,7 +426,7 @@ func buildQuests(qs []snapshot.Quest) (model.TableSection, bool) {
 	return sec, true
 }
 
-func buildTitles(titles []snapshot.Title) (model.TableSection, bool) {
+func buildTitles(titles []snapshot.Title, login string) (model.TableSection, bool) {
 	if len(titles) == 0 {
 		return model.TableSection{}, false
 	}
@@ -440,7 +440,7 @@ func buildTitles(titles []snapshot.Title) (model.TableSection, bool) {
 			selected = model.Cell{Text: "✔ selected", Tone: "good"}
 		}
 		sec.Rows = append(sec.Rows, []model.Cell{
-			{Text: orDash(t.Name)},
+			{Text: orDash(strings.ReplaceAll(t.Name, "%login", login))},
 			selected,
 		})
 	}
