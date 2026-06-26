@@ -188,7 +188,7 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		c := coalitions[0]
 		prof.Coalition = &model.CoalitionBadge{
 			Name:    c.Name,
-			Score:   commaInt(c.Score),
+			Score:   CommaInt(int64(c.Score)),
 			Color:   cmp.Or(c.Color, "#00babc"),
 			Private: owner && !public,
 		}

@@ -7,6 +7,7 @@ templ Privacy(viewerLogin string) {
 	@Layout("Privacy", viewerLogin, "") {
 		<main id="main" class="centered">
 			<h1>Privacy</h1>
+			<p class="muted">Last updated: June 2026</p>
 			<p>
 				Fortytwode lets you view and share your 42 progress. This page explains what data we collect, how we use it, who can see it, and how you can manage or delete it.
 			</p>
@@ -19,6 +20,9 @@ templ Privacy(viewerLogin string) {
 				<li>Your 42 activity: projects, evaluations you gave or received, locations, events, quests, and your evaluation-point history.</li>
 			</ul>
 			<p>
+				We keep short-lived sync records tied to your 42 identity, so we can manage sync traffic and prevent abuse.
+			</p>
+			<p>
 				If you choose to register a Fortytwode account, we also store:
 			</p>
 			<ul>
@@ -29,7 +33,7 @@ templ Privacy(viewerLogin string) {
 				<li>Session information so you stay signed in.</li>
 			</ul>
 			<p>
-				We also keep short-lived sync records tied to your 42 identity so we can manage sync traffic and prevent abuse.
+				We keep two anonymous aggregate counters: the total number of data downloads, and the total number of profiles created. These contain no personal data, and are used for displaying on the front page.
 			</p>
 			<h2>How we use your data</h2>
 			<p>

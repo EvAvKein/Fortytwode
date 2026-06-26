@@ -783,6 +783,16 @@ ol.evals {
 	}
 }
 
+main.landing {
+	padding-bottom: 2rem;
+}
+.landing-stats {
+	position: absolute;
+	bottom: 3rem;
+	width: 100%;
+	text-align: center;
+}
+
 .button {
 	display: inline-block;
 	padding: 0.5rem 1rem;

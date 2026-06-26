@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/snapshot"
@@ -26,7 +27,9 @@ var (
 
 // Store owns a connection pool to the database.
 type Store struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	downloads atomic.Int64
+	profiles  atomic.Int64
 }
 
 // Open connects to dsn and applies any pending migrations.
@@ -40,7 +43,23 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("apply migrations: %w", err)
 	}
+	if err := s.loadStats(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("load stats: %w", err)
+	}
 	return s, nil
+}
+
+// loadStats reads the aggregate counters from the database into memory.
+func (s *Store) loadStats(ctx context.Context) error {
+	var downloads, profiles int64
+	err := s.pool.QueryRow(ctx, `SELECT downloads, profiles FROM stats`).Scan(&downloads, &profiles)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	s.downloads.Store(downloads)
+	s.profiles.Store(profiles)
+	return nil
 }
 
 // Close releases the connection pool.
@@ -328,6 +347,32 @@ func (s *Store) PurgeStaleCooldowns(ctx context.Context, olderThan time.Duration
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
+}
+
+// Stats holds the aggregate counters shown on the landing page.
+type Stats struct {
+	Downloads int64
+	Profiles  int64
+}
+
+// GetStats returns the current aggregate counters from memory.
+func (s *Store) GetStats() Stats {
+	return Stats{
+		Downloads: s.downloads.Load(),
+		Profiles:  s.profiles.Load(),
+	}
+}
+
+// IncrementDownloads bumps the in-memory download counter and persists to DB.
+func (s *Store) IncrementDownloads() {
+	s.downloads.Add(1)
+	go s.pool.Exec(context.Background(), `UPDATE stats SET downloads = downloads + 1`)
+}
+
+// IncrementProfiles bumps the in-memory profiles counter and persists to DB.
+func (s *Store) IncrementProfiles() {
+	s.profiles.Add(1)
+	go s.pool.Exec(context.Background(), `UPDATE stats SET profiles = profiles + 1`)
 }
 
 // isUniqueViolation reports whether err is a Postgres unique_violation (23505).

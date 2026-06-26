@@ -43,7 +43,7 @@ func (s *Server) canResync(ctx context.Context, acc store.Account) bool {
 
 // handleHome shows the landing page.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	render(w, r, pages.Landing(s.viewerLogin(r)))
+	render(w, r, pages.Landing(s.viewerLogin(r), s.store.GetStats()))
 }
 
 // handleNotFound renders the styled 404 for any unmatched page route.
@@ -353,6 +353,7 @@ func (s *Server) handleDownloadRaw(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(jobCookie); err == nil {
 		if j, ok := s.jobs.get(c.Value); ok {
 			if snap, _, login, done := j.result(); done {
+				go s.store.IncrementDownloads()
 				writeJSONDownload(w, snap, login+"-raw")
 				return
 			}
@@ -369,6 +370,7 @@ func (s *Server) handleDownloadSaved(w http.ResponseWriter, r *http.Request) {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
 		return
 	}
+	go s.store.IncrementDownloads()
 	writeJSONDownload(w, acc.Data, acc.FtLogin+"-saved")
 }
 
@@ -380,6 +382,7 @@ func (s *Server) handleDownloadCurated(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(jobCookie); err == nil {
 		if j, ok := s.jobs.get(c.Value); ok {
 			if snap, _, login, done := j.result(); done {
+				go s.store.IncrementDownloads()
 				writeJSONDownload(w, snapshot.Curate(snap), login+"-curated")
 				return
 			}
@@ -455,6 +458,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not create account", http.StatusInternalServerError)
 		return
 	}
+	go s.store.IncrementProfiles()
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
 	if err := s.startSession(w, r, id); err != nil {

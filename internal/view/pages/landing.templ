@@ -1,12 +1,16 @@
 package pages
 
-import "github.com/EvAvKein/Fortytwode/internal/routes"
+import (
+	"github.com/EvAvKein/Fortytwode/internal/routes"
+	"github.com/EvAvKein/Fortytwode/internal/store"
+	"github.com/EvAvKein/Fortytwode/internal/view"
+)
 
 // Landing is the logged-out home page: the anonymous "get my data" CTA plus a
 // link to log in. (Sign-up is only offered after syncing, once there's data to keep.)
-templ Landing(viewerLogin string) {
+templ Landing(viewerLogin string, stats store.Stats) {
 	@Layout("Fortytwode", viewerLogin, "") {
-		<main id="main" class="centered">
+		<main id="main" class="centered landing">
 			<h1>Fortytwode</h1>
 			<p class="muted">Pronounced like "Fortitude", "Forty-two-d"</p>
 			<p>
@@ -23,5 +27,8 @@ templ Landing(viewerLogin string) {
 				Have an account? <a href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
 			</p>
 		</main>
+		<p class="muted landing-stats">
+			{ view.CommaInt(stats.Downloads) } data downloads <span aria-hidden="true">· </span><span class="sr-only">, </span>{ view.CommaInt(stats.Profiles) } profiles created
+		</p>
 	}
 }

@@ -35,8 +35,8 @@ func dashInt(p *int) string {
 	return strconv.Itoa(*p)
 }
 
-// commaInt formats n with thousands separators for English locale.
-func commaInt(n int) string {
+// CommaInt formats n with thousands separators for English locale.
+func CommaInt(n int64) string {
 	return message.NewPrinter(language.English).Sprintf("%d", n)
 }
 
