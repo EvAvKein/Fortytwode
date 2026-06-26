@@ -796,6 +796,7 @@ func (s *Server) settingsData(ctx context.Context, acc store.Account, saved bool
 			Key:     t.Key,
 			Label:   t.Label,
 			Public:  view.SectionPublic(acc.Visibility, t.Key),
+			Default: view.SectionPublic(nil, t.Key),
 			HasData: settingsHasData(acc.Data, t.Key),
 		})
 	}

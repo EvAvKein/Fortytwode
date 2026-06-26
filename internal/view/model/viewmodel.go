@@ -124,6 +124,7 @@ type PageData struct {
 type SettingsToggle struct {
 	Key, Label string
 	Public     bool
+	Default    bool
 	HasData    bool
 }
 

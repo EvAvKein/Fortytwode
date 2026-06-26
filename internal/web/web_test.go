@@ -464,6 +464,47 @@ func TestParseVisibilityFormMultipart(t *testing.T) {
 	}
 }
 
+func TestParseVisibilityFormRestoreDefaults(t *testing.T) {
+	// Simulate the restore defaults form: hidden inputs for every section that
+	// is public by default, no is_public field.
+	body := "section_projects_users=on" +
+		"&section_scale_teams_as_corrected=on" +
+		"&section_scale_teams_as_corrector=on" +
+		"&section_quests_users=on" +
+		"&section_titles_users=on" +
+		"&section_achievements=on"
+	req := httptest.NewRequest(http.MethodPatch, routes.APIAccountVisibility.URL(), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	isPublic, sections, err := parseVisibilityForm(req)
+	if err != nil {
+		t.Fatalf("parseVisibilityForm returned error: %v", err)
+	}
+	if isPublic {
+		t.Errorf("isPublic = %v, want false", isPublic)
+	}
+	// Every default-public section should be true.
+	for _, key := range []string{
+		"projects_users", "scale_teams_as_corrected", "scale_teams_as_corrector",
+		"quests_users", "titles_users", "achievements",
+	} {
+		if got, ok := sections[key]; !ok || !got {
+			t.Errorf("default-public section %s = %v (ok=%v), want true/ok", key, got, ok)
+		}
+	}
+	// Every default-private section should be false.
+	for _, key := range []string{
+		"coalitions", "locations", "skills", "contact", "points",
+		"correction_point_historics", "events_users",
+	} {
+		if got, ok := sections[key]; !ok || got {
+			t.Errorf("default-private section %s = %v (ok=%v), want false/ok", key, got, ok)
+		}
+	}
+	if len(sections) != len(view.ToggleableSections) {
+		t.Errorf("toggle count = %d, want %d", len(sections), len(view.ToggleableSections))
+	}
+}
+
 // testStore opens the database named by DATABASE_URL, skipping the test when it
 // is unset or unreachable (so `go test ./...` stays hermetic without Postgres).
 func testStore(t *testing.T) *store.Store {

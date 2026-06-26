@@ -44,6 +44,14 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 				</fieldset>
 				<button type="submit" class="button">Save</button>
 			</form>
+			<form method="post" action={ routes.APIAccountVisibility.URL() } data-method={ routes.APIAccountVisibility.MethodLower() } data-confirm="Restore default visibility settings?" class="form">
+				for _, t := range d.Toggles {
+					if t.Default {
+						<input type="hidden" name={ "section_" + t.Key }/>
+					}
+				}
+				<button type="submit" class="button">Restore defaults</button>
+			</form>
 			<h2>Account</h2>
 			<form method="post" action={ routes.APIAccountEmail.URL() } data-method={ routes.APIAccountEmail.MethodLower() } class="form">
 				if d.EmailSaved {
