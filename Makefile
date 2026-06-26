@@ -126,4 +126,9 @@ clean:
 test:
 	go test ./...
 
-.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt fmt-check vet vuln check tidy clean test
+# setup-hooks: install the pre-push hook into .git/hooks/
+setup-hooks:
+	cp pre-push .git/hooks/pre-push
+	chmod +x .git/hooks/pre-push
+
+.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt fmt-check vet vuln check tidy clean test setup-hooks

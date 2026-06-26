@@ -4,6 +4,8 @@ First off, thank you for considering contributing! <3
 
 The project was created for the 42 students and alumni of Hive Helsinki, but we also welcome contributions from non-42 students at Hive or with anyone with a 42 network account ✨
 
+Before working on changes, run `make setup-hooks` to install the pre-push hook (runs `make check` and `make test` on push).
+
 ## Bugs & Features
 
 ### To report a bug, or suggest a feature:
