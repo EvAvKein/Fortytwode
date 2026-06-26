@@ -64,6 +64,10 @@ services:
       watch:
         - action: rebuild
           path: ./internal
+          ignore:
+            - store/schema.sql
+            - view/pages/*_templ.go
+            - view/profile/*_templ.go
         - action: rebuild
           path: ./main.go
         - action: rebuild
