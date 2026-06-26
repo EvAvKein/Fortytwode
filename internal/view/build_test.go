@@ -115,7 +115,7 @@ func TestBuildVisibility(t *testing.T) {
 		t.Error("non-owner should not see Achievements when opted private")
 	}
 
-	opted := Build(snaps, false, map[string]bool{"locations": true, "contact": true, "points": true, "skills": true})
+	opted := Build(snaps, false, map[string]bool{"coalitions": true, "locations": true, "contact": true, "points": true, "skills": true})
 	if opted.Sections.Locations == nil {
 		t.Error("non-owner should see Locations when opted public")
 	}
