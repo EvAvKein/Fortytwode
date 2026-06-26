@@ -100,7 +100,7 @@ type Cursus struct {
 type CursusUser struct {
 	ID           int     `json:"id"`
 	BeginAt      string  `json:"begin_at"`
-	EndAt        *string `json:"end_at"`
+	EndAt        *string `json:"end_at"` // Wanted to use it, but it's unreliable because 42cursus alumni get null the same as active students
 	Grade        *string `json:"grade"`
 	Level        float64 `json:"level"`
 	Skills       []Skill `json:"skills"`
