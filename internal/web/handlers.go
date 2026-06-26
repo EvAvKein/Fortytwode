@@ -564,7 +564,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	viewer, loggedIn := s.currentAccount(r)
 	acc, err := s.store.AccountByLogin(r.Context(), login)
 	if errors.Is(err, store.ErrNotFound) {
-		renderStatus(w, r, http.StatusNotFound, pages.ProfileNotFound(login, s.viewerLogin(r)))
+		renderStatus(w, r, http.StatusNotFound, pages.ProfileUnavailable(s.viewerLogin(r)))
 		return
 	}
 	if err != nil {
@@ -574,7 +574,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 
 	owner := loggedIn && viewer.ID == acc.ID
 	if !owner && !loggedIn && !acc.IsPublic {
-		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
+		renderStatus(w, r, http.StatusNotFound, pages.ProfileUnavailable(s.viewerLogin(r)))
 		return
 	}
 

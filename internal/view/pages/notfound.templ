@@ -12,14 +12,14 @@ templ NotFound(viewerLogin string) {
 	}
 }
 
-// ProfileNotFound is the 404 for /users/{login} when no such account exists. login is
-// the requested 42 login; templ HTML-escapes the interpolation.
-templ ProfileNotFound(login string, viewerLogin string) {
-	@Layout("Profile not found", viewerLogin, "") {
+// ProfileUnavailable is the unified response for /users/{login} when the profile
+// either doesn't exist or isn't public. The response is identical in both cases
+// to avoid leaking whether a profile exists.
+templ ProfileUnavailable(viewerLogin string) {
+	@Layout("Profile unavailable", viewerLogin, "") {
 		<main id="main" class="centered">
-			<h1>No such profile</h1>
-			<p>There's no Fortytwode profile for <strong>{ login }</strong>.</p>
-			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) }>Get my 42 data</a>
+			<h1>Profile unavailable</h1>
+			<p>This profile is either private or doesn't exist.</p>
 		</main>
 	}
 }
