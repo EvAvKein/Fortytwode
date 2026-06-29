@@ -10,15 +10,9 @@ import (
 	"time"
 )
 
-// testStore opens the database named by DATABASE_URL, skipping the test when it
-// is unset (so `go test ./...` stays hermetic without Postgres).
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set DATABASE_URL to run store integration tests")
-	}
-	st, err := Open(context.Background(), dsn)
+	st, err := Open(context.Background(), os.Getenv("DATABASE_URL"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

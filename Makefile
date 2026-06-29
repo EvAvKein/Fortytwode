@@ -126,9 +126,16 @@ clean:
 	rm -f $(BINARY)
 	find internal -name '*_templ.go' -delete
 
-# test: run the Go test suite
-test:
-	go test ./...
+# test: run the Go test suite.
+# When the local Postgres isn't already running, spin it up and tear it down afterwards
+test: generate
+	@db_started=0; \
+	if ! nc -z localhost 5432 2>/dev/null; then \
+		docker compose up -d db --wait; \
+		db_started=1; \
+	fi; \
+	go test ./...; \
+	if [ "$$db_started" = "1" ]; then docker compose down; fi
 
 # setup-hooks: install the pre-push hook into .git/hooks/
 setup-hooks:

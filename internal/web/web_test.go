@@ -505,21 +505,11 @@ func TestParseVisibilityFormRestoreDefaults(t *testing.T) {
 	}
 }
 
-// testStore opens the database named by DATABASE_URL, skipping the test when it
-// is unset or unreachable (so `go test ./...` stays hermetic without Postgres).
 func testStore(t *testing.T) *store.Store {
 	t.Helper()
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set DATABASE_URL to run integration tests")
-	}
-	st, err := store.Open(context.Background(), dsn)
+	st, err := store.Open(context.Background(), os.Getenv("DATABASE_URL"))
 	if err != nil {
-		t.Skipf("database unreachable: %v", err)
-	}
-	if err := st.Ping(context.Background()); err != nil {
-		st.Close()
-		t.Skipf("database unreachable: %v", err)
+		t.Fatalf("open: %v", err)
 	}
 	t.Cleanup(st.Close)
 	return st
