@@ -18,6 +18,7 @@ templ Syncing(viewerLogin string, profileLogin string) {
 				<div id="bar" class="progress-bar" data-stream-path={ routes.APISyncStream.Path }></div>
 			</div>
 			<p id="label" class="muted">Starting…</p>
+			<p id="slow-banner" class="notice hidden">We're experiencing heavy traffic right now: Your sync is slower than usual, hang tight!</p>
 			<p id="error" class="error hidden"></p>
 			<div id="sync-success-actions" class="hidden">
 				<div class="spaced-apart">

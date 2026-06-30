@@ -14,14 +14,24 @@ const (
 	jobError   jobStatus = "error"
 )
 
+// slowTrafficThreshold is the number of concurrent running syncs at or above which
+// the syncing page warns that heavy traffic is slowing things down. The 42 API caps
+// the whole app at 2 req/s shared across all syncs, so each of N concurrent syncs
+// gets only ~2/N req/s.
+const slowTrafficThreshold = 3
+
 // job is one in-flight or completed sync. The 42 snapshot lives here (in RAM)
 // only until the job is claimed at sign-up, downloaded, or swept by TTL.
 type job struct {
-	mu           sync.Mutex
-	status       jobStatus
-	step         int
-	total        int
-	stepName     string
+	mu       sync.Mutex
+	status   jobStatus
+	step     int
+	total    int
+	stepName string
+	// slow latches true once this sync has been throttled by heavy traffic; it is
+	// never cleared, so the page's notice stays put for the rest of the sync instead
+	// of flapping as concurrent syncs come and go.
+	slow         bool
 	snapshot     map[string]json.RawMessage
 	ftID         int64
 	ftLogin      string
@@ -38,6 +48,13 @@ func (j *job) setProgress(step, total int, name string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.step, j.total, j.stepName = step, total, name
+}
+
+// markSlow latches the heavy-traffic flag (idempotent; never un-set).
+func (j *job) markSlow() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.slow = true
 }
 
 func (j *job) finish(snapshot map[string]json.RawMessage, ftID int64, ftLogin string) {
@@ -78,12 +95,15 @@ type jobState struct {
 	// Matched is true when this 42 identity is already registered, so the page
 	// offers "sign in" instead of "sign up" once done.
 	Matched bool `json:"matched,omitempty"`
+	// Slow is true once heavy traffic has throttled this sync; the page then shows a
+	// sticky heavy-traffic notice.
+	Slow bool `json:"slow,omitempty"`
 }
 
 func (j *job) state() jobState {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	return jobState{Status: string(j.status), Step: j.step, Total: j.total, Name: j.stepName, Error: j.errMsg, Matched: j.matchedID != 0}
+	return jobState{Status: string(j.status), Step: j.step, Total: j.total, Name: j.stepName, Error: j.errMsg, Matched: j.matchedID != 0, Slow: j.slow}
 }
 
 // result returns the completed snapshot and identity; ok is false unless done.
@@ -155,6 +175,22 @@ func (r *jobRegistry) hasRunningForLocked(clientKey string) bool {
 		}
 	}
 	return false
+}
+
+// runningCount reports how many jobs are currently syncing, so the syncing page can
+// warn when concurrent syncs are sharing (and slowing) the shared 42 rate limiter.
+func (r *jobRegistry) runningCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, j := range r.jobs {
+		j.mu.Lock()
+		if j.status == jobRunning {
+			n++
+		}
+		j.mu.Unlock()
+	}
+	return n
 }
 
 func (r *jobRegistry) get(id string) (*job, bool) {

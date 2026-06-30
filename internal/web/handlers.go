@@ -323,6 +323,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 	for {
+		if s.jobs.runningCount() >= slowTrafficThreshold {
+			j.markSlow()
+		}
 		st := j.state()
 		event := "progress"
 		switch st.Status {

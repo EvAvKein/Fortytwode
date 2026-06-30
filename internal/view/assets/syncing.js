@@ -4,12 +4,21 @@
 	const bar = document.getElementById("bar");
 	const label = document.getElementById("label");
 	const error = document.getElementById("error");
+	const slowBanner = document.getElementById("slow-banner");
 	const errorActions = document.getElementById("sync-error-actions");
 	const successActions = document.getElementById("sync-success-actions");
 
 	// Not the syncing page (or markup changed): do nothing rather than throw or
 	// open a stray SSE connection.
-	if (!bar || !label || !error || !errorActions || !successActions) return;
+	if (
+		!bar ||
+		!label ||
+		!error ||
+		!slowBanner ||
+		!errorActions ||
+		!successActions
+	)
+		return;
 
 	const streamPath = bar.dataset.streamPath || "/sync/stream";
 	const eventStream = new EventSource(apiPrefix + streamPath);
@@ -25,6 +34,7 @@
 		label.textContent =
 			"Fetching " + data.name + "… (" + data.step + "/" + data.total + ")";
 		label.classList.remove("hidden");
+		if (data.slow) slowBanner.classList.remove("hidden");
 		error.classList.add("hidden");
 		errorActions.classList.add("hidden");
 	});

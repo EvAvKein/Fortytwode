@@ -165,6 +165,50 @@ func TestCreateRejectsConcurrentClient(t *testing.T) {
 	}
 }
 
+func TestRunningCount(t *testing.T) {
+	r := newJobRegistry()
+
+	if n := r.runningCount(); n != 0 {
+		t.Errorf("empty registry: got %d running, want 0", n)
+	}
+
+	_, j1, _ := r.create("ip:1.2.3.4")
+	_, j2, _ := r.create("ip:5.6.7.8")
+	if n := r.runningCount(); n != 2 {
+		t.Errorf("two live syncs: got %d running, want 2", n)
+	}
+
+	// Finished and failed jobs stay in the registry but no longer count.
+	j1.finish(nil, 0, "")
+	if n := r.runningCount(); n != 1 {
+		t.Errorf("after one finished: got %d running, want 1", n)
+	}
+	j2.fail(fmt.Errorf("boom"))
+	if n := r.runningCount(); n != 0 {
+		t.Errorf("after the other failed: got %d running, want 0", n)
+	}
+}
+
+func TestMarkSlowLatches(t *testing.T) {
+	r := newJobRegistry()
+	_, j, _ := r.create("")
+
+	if j.state().Slow {
+		t.Error("a fresh job should not be marked slow")
+	}
+
+	j.markSlow()
+	if !j.state().Slow {
+		t.Error("state should report slow after markSlow")
+	}
+
+	// The flag is sticky: later progress (e.g. once traffic clears) must not clear it.
+	j.setProgress(3, 5, "projects")
+	if !j.state().Slow {
+		t.Error("slow should stay latched after subsequent progress updates")
+	}
+}
+
 func TestHasRunning(t *testing.T) {
 	r := newJobRegistry()
 

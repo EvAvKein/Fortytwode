@@ -669,6 +669,9 @@ ol.evals {
 .error {
 	color: #ff7b7b;
 }
+.notice {
+	color: #f0c674;
+}
 .good {
 	color: #5fd0a0;
 }
