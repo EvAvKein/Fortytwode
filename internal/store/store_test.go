@@ -30,67 +30,90 @@ func TestAccountsAndSessions(t *testing.T) {
 	}
 	t.Cleanup(func() { st.DeleteAccount(ctx, id) })
 
-	// Duplicate email/ft_id is reported as ErrDuplicate.
-	if _, err := st.CreateAccount(ctx, email, "h", ftID, login, data); !errors.Is(err, store.ErrDuplicate) {
-		t.Errorf("duplicate create: got %v, want ErrDuplicate", err)
-	}
+	// email, ft_id and ft_login are each independently UNIQUE, so each duplicate
+	// is tested in isolation by colliding on one field while varying the others.
+	t.Run("DuplicateEmail", func(t *testing.T) {
+		if _, err := st.CreateAccount(ctx, email, "h", ftID+1, "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
+			t.Errorf("got %v, want ErrDuplicate", err)
+		}
+	})
+	t.Run("DuplicateFtID", func(t *testing.T) {
+		if _, err := st.CreateAccount(ctx, "other-"+email, "h", ftID, "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
+			t.Errorf("got %v, want ErrDuplicate", err)
+		}
+	})
 
-	// Lookups.
-	if acc, hash, err := st.AccountByEmail(ctx, email); err != nil || hash != "hash$value" || acc.ID != id {
-		t.Errorf("AccountByEmail: acc=%+v hash=%q err=%v", acc, hash, err)
-	}
-	if acc, err := st.AccountByLogin(ctx, login); err != nil || acc.ID != id {
-		t.Errorf("AccountByLogin: %+v %v", acc, err)
-	}
-	if acc, err := st.AccountByFtID(ctx, ftID); err != nil || acc.ID != id {
-		t.Errorf("AccountByFtID: %+v %v", acc, err)
-	}
-	if _, err := st.AccountByLogin(ctx, "nobody-"+login); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("missing login: got %v, want ErrNotFound", err)
-	}
+	t.Run("AccountByEmail", func(t *testing.T) {
+		if acc, hash, err := st.AccountByEmail(ctx, email); err != nil || hash != "hash$value" || acc.ID != id {
+			t.Errorf("acc=%+v hash=%q err=%v", acc, hash, err)
+		}
+	})
+	t.Run("AccountByLogin", func(t *testing.T) {
+		if acc, err := st.AccountByLogin(ctx, login); err != nil || acc.ID != id {
+			t.Errorf("%+v %v", acc, err)
+		}
+	})
+	t.Run("AccountByFtID", func(t *testing.T) {
+		if acc, err := st.AccountByFtID(ctx, ftID); err != nil || acc.ID != id {
+			t.Errorf("%+v %v", acc, err)
+		}
+	})
+	t.Run("MissingLogin", func(t *testing.T) {
+		if _, err := st.AccountByLogin(ctx, "nobody-"+login); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("got %v, want ErrNotFound", err)
+		}
+	})
 
-	// Merge update preserves resources absent from the new data.
-	if err := st.UpdateSnapshot(ctx, id, map[string]json.RawMessage{"locations": json.RawMessage(`[{"host":"c1"}]`)}); err != nil {
-		t.Fatalf("update snapshot: %v", err)
-	}
-	acc, err := st.AccountByLogin(ctx, login)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if acc.Data["projects_users"] == nil || acc.Data["locations"] == nil {
-		t.Errorf("merge lost a resource: keys=%v", keys(acc.Data))
-	}
+	t.Run("UpdateSnapshot", func(t *testing.T) {
+		// Merge update preserves resources absent from the new data.
+		if err := st.UpdateSnapshot(ctx, id, map[string]json.RawMessage{"locations": json.RawMessage(`[{"host":"c1"}]`)}); err != nil {
+			t.Fatalf("update snapshot: %v", err)
+		}
+		acc, err := st.AccountByLogin(ctx, login)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if acc.Data["projects_users"] == nil || acc.Data["locations"] == nil {
+			t.Errorf("merge lost a resource: keys=%v", keys(acc.Data))
+		}
+	})
 
-	// Visibility.
-	if err := st.UpdateVisibility(ctx, id, true, map[string]bool{"locations": true}); err != nil {
-		t.Fatalf("update visibility: %v", err)
-	}
-	if acc, _ := st.AccountByLogin(ctx, login); !acc.IsPublic || !acc.Visibility["locations"] {
-		t.Errorf("visibility not saved: %+v", acc)
-	}
+	t.Run("UpdateVisibility", func(t *testing.T) {
+		if err := st.UpdateVisibility(ctx, id, true, map[string]bool{"locations": true}); err != nil {
+			t.Fatalf("update visibility: %v", err)
+		}
+		if acc, _ := st.AccountByLogin(ctx, login); !acc.IsPublic || !acc.Visibility["locations"] {
+			t.Errorf("visibility not saved: %+v", acc)
+		}
+	})
 
 	// Sessions: create -> lookup -> delete; expired -> not found.
 	sid := "sess-" + login
-	if err := st.CreateSession(ctx, sid, id, time.Now().Add(time.Hour)); err != nil {
-		t.Fatalf("create session: %v", err)
-	}
-	if got, err := st.SessionAccount(ctx, sid); err != nil || got.ID != id {
-		t.Errorf("SessionAccount: %+v %v", got, err)
-	}
-	if err := st.DeleteSession(ctx, sid); err != nil {
-		t.Fatalf("delete session: %v", err)
-	}
-	if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("deleted session: got %v, want ErrNotFound", err)
-	}
-
-	expired := "expired-" + login
-	if err := st.CreateSession(ctx, expired, id, time.Now().Add(-time.Minute)); err != nil {
-		t.Fatalf("create expired session: %v", err)
-	}
-	if _, err := st.SessionAccount(ctx, expired); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("expired session: got %v, want ErrNotFound", err)
-	}
+	t.Run("CreateSession", func(t *testing.T) {
+		if err := st.CreateSession(ctx, sid, id, time.Now().Add(time.Hour)); err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		if got, err := st.SessionAccount(ctx, sid); err != nil || got.ID != id {
+			t.Errorf("SessionAccount: %+v %v", got, err)
+		}
+	})
+	t.Run("DeleteSession", func(t *testing.T) {
+		if err := st.DeleteSession(ctx, sid); err != nil {
+			t.Fatalf("delete session: %v", err)
+		}
+		if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("deleted session: got %v, want ErrNotFound", err)
+		}
+	})
+	t.Run("ExpiredSession", func(t *testing.T) {
+		expired := "expired-" + login
+		if err := st.CreateSession(ctx, expired, id, time.Now().Add(-time.Minute)); err != nil {
+			t.Fatalf("create expired session: %v", err)
+		}
+		if _, err := st.SessionAccount(ctx, expired); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired session: got %v, want ErrNotFound", err)
+		}
+	})
 }
 
 func TestReserveSync(t *testing.T) {
