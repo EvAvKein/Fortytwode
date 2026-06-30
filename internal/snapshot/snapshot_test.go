@@ -216,3 +216,29 @@ func TestCurateIsPresenceDriven(t *testing.T) {
 		t.Error("standalone cursus_users should be dropped")
 	}
 }
+func TestLoginScrubber(t *testing.T) {
+	cases := []struct {
+		name   string
+		logins []string
+		in     string
+		want   string
+	}{
+		{"empty logins is identity", nil, "alice helped bob", "alice helped bob"},
+		{"single login removed", []string{"alice"}, "alice helped", "[redacted] helped"},
+		{"all occurrences removed", []string{"bob"}, "bob and bob", "[redacted] and [redacted]"},
+		{"duplicate logins handled", []string{"bob", "bob"}, "bob", "[redacted]"},
+		// Longest-first ordering: "jdoe2" must match before "jdoe" so it isn't left as "[redacted]2".
+		{"prefix login does not partial-match longer", []string{"jdoe", "jdoe2"}, "jdoe2 and jdoe", "[redacted] and [redacted]"},
+		// Documented over-removal: a login that is a substring of another word scrubs it too.
+		{"substring over-removal (documented)", []string{"al"}, "also alpha", "[redacted]so [redacted]pha"},
+		// Documented limitation: matching is case-sensitive, so a differing case is missed.
+		{"case-sensitive miss (documented)", []string{"alice"}, "Alice helped", "Alice helped"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := loginScrubber(c.logins)(c.in); got != c.want {
+				t.Errorf("loginScrubber(%v)(%q) = %q, want %q", c.logins, c.in, got, c.want)
+			}
+		})
+	}
+}

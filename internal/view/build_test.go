@@ -140,3 +140,20 @@ func TestBuildVisibility(t *testing.T) {
 		}
 	})
 }
+
+// An empty snapshot map has no "me" resource, so Build can't unmarshal the
+// profile and must degrade to an error page rather than panicking.
+func TestBuildEmptySnapshot(t *testing.T) {
+	d := Build(map[string]json.RawMessage{}, true, nil)
+	if !d.IsError {
+		t.Errorf("empty snapshot should yield an error page, got %+v", d)
+	}
+}
+
+// A malformed "me" snapshot is reported as an error page, not a panic.
+func TestBuildInvalidMe(t *testing.T) {
+	d := Build(map[string]json.RawMessage{"me": json.RawMessage(`{not json`)}, true, nil)
+	if !d.IsError {
+		t.Errorf("invalid \"me\" should yield an error page, got %+v", d)
+	}
+}
