@@ -13,6 +13,18 @@
 	outline-offset: 3px;
 }
 
+.private {
+	color: var(--accent);
+	font-weight: 600;
+	font-size: 0.65rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	background: color-mix(in srgb, var(--accent) 12%, transparent);
+	border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+	padding: 0.05rem 0.45rem;
+	border-radius: 999px;
+}
+
 h1,
 h2,
 h3,
@@ -173,19 +185,6 @@ header.profile {
 			font-weight: 400;
 			text-transform: uppercase;
 			letter-spacing: 0.03em;
-
-			.private {
-				color: var(--accent);
-				font-weight: 600;
-				font-size: 0.65rem;
-				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				background: color-mix(in srgb, var(--accent) 12%, transparent);
-				border: 1px solid
-					color-mix(in srgb, var(--accent) 40%, transparent);
-				padding: 0.05rem 0.45rem;
-				border-radius: 999px;
-			}
 		}
 
 		.points-items {
@@ -312,19 +311,6 @@ header.profile {
 			font-weight: 400;
 			text-transform: uppercase;
 			letter-spacing: 0.03em;
-
-			.private {
-				color: var(--accent);
-				font-weight: 600;
-				font-size: 0.65rem;
-				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				background: color-mix(in srgb, var(--accent) 12%, transparent);
-				border: 1px solid
-					color-mix(in srgb, var(--accent) 40%, transparent);
-				padding: 0.05rem 0.45rem;
-				border-radius: 999px;
-			}
 		}
 
 		.coalition-row {
@@ -409,15 +395,7 @@ details {
 		}
 
 		.private {
-			color: var(--accent);
-			font-weight: 600;
 			font-size: 0.7rem;
-			text-transform: uppercase;
-			letter-spacing: 0.04em;
-			background: color-mix(in srgb, var(--accent) 12%, transparent);
-			border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
-			padding: 0.05rem 0.45rem;
-			border-radius: 999px;
 		}
 
 		.count {
