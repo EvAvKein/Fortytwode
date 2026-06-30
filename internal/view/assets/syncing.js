@@ -49,7 +49,9 @@
 				document.getElementById("signup-action").classList.add("hidden");
 				document.getElementById("signin-action").classList.remove("hidden");
 			}
-		} catch (_) {}
+		} catch (e) {
+			console.warn("syncing: failed to parse done event data:", e);
+		}
 		successActions.classList.remove("hidden");
 		errorActions.classList.add("hidden");
 		eventStream.close();
@@ -63,7 +65,9 @@
 		let msg;
 		try {
 			msg = JSON.parse(e.data).error;
-		} catch (_) {}
+		} catch (err) {
+			console.warn("syncing: failed to parse error event data:", err);
+		}
 		error.textContent =
 			msg ||
 			"This sync is no longer active: It may have finished, expired, or the connection dropped. You can start a new one below.";
