@@ -225,72 +225,51 @@ func TestNotFoundHandler(t *testing.T) {
 	}
 }
 
-func TestPasswordAttemptLimiter(t *testing.T) {
-	limiter := newAttemptLimiter[int64](3, 100*time.Millisecond)
-	const id int64 = 1
+// testAttemptLimiterBehaviour exercises the full lifecycle of an attemptLimiter:
+// it allows up to max attempts, blocks the next one, recovers after the window
+// expires, resets on clear, and tracks keys independently. It is generic so the
+// int64 (account ID) and string (email) limiters share one test body.
+func testAttemptLimiterBehaviour[T comparable](t *testing.T, key, other T) {
+	t.Helper()
+	limiter := newAttemptLimiter[T](3, 100*time.Millisecond)
 
 	// The first three attempts are allowed.
 	for i := 0; i < 3; i++ {
-		if !limiter.allowed(id) {
+		if !limiter.allowed(key) {
 			t.Fatalf("attempt %d should be allowed", i+1)
 		}
-		limiter.recordFailed(id)
+		limiter.recordFailed(key)
 	}
 
 	// The fourth attempt is blocked.
-	if limiter.allowed(id) {
+	if limiter.allowed(key) {
 		t.Error("fourth attempt should be blocked")
 	}
 
 	// After the window passes, attempts are allowed again.
 	time.Sleep(150 * time.Millisecond)
-	if !limiter.allowed(id) {
+	if !limiter.allowed(key) {
 		t.Error("attempts should be allowed after the window expires")
 	}
 
 	// A successful check clears the history.
-	limiter.recordFailed(id)
-	limiter.clear(id)
-	if !limiter.allowed(id) {
+	limiter.recordFailed(key)
+	limiter.clear(key)
+	if !limiter.allowed(key) {
 		t.Error("clear should reset the limiter")
 	}
 
-	// Different accounts are tracked independently.
-	if !limiter.allowed(2) {
-		t.Error("other accounts should not be blocked")
+	// Different keys are tracked independently.
+	if !limiter.allowed(other) {
+		t.Error("other keys should not be blocked")
 	}
 }
 
-func TestLoginAttemptLimiter(t *testing.T) {
-	limiter := newAttemptLimiter[string](3, 100*time.Millisecond)
-	email := "user@example.com"
-
-	for i := 0; i < 3; i++ {
-		if !limiter.allowed(email) {
-			t.Fatalf("attempt %d should be allowed", i+1)
-		}
-		limiter.recordFailed(email)
-	}
-
-	if limiter.allowed(email) {
-		t.Error("fourth attempt should be blocked")
-	}
-
-	time.Sleep(150 * time.Millisecond)
-	if !limiter.allowed(email) {
-		t.Error("attempts should be allowed after the window expires")
-	}
-
-	limiter.recordFailed(email)
-	limiter.clear(email)
-	if !limiter.allowed(email) {
-		t.Error("clear should reset the limiter")
-	}
-
-	otherEmail := "other@example.com"
-	if !limiter.allowed(otherEmail) {
-		t.Error("other emails should not be blocked")
-	}
+func TestAttemptLimiterBehaviour(t *testing.T) {
+	t.Run("int64", func(t *testing.T) { testAttemptLimiterBehaviour[int64](t, 1, 2) })
+	t.Run("string", func(t *testing.T) {
+		testAttemptLimiterBehaviour(t, "user@example.com", "other@example.com")
+	})
 }
 
 func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
@@ -312,11 +291,15 @@ func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
 	}
 }
 
-func TestLoginAttemptLimiterPrune(t *testing.T) {
-	limiter := newAttemptLimiter[string](5, 50*time.Millisecond)
+// testAttemptLimiterPrune verifies that prune() keeps entries still inside the
+// window and removes them once they expire. Generic over the key type so the
+// int64 and string limiters share one test body.
+func testAttemptLimiterPrune[T comparable](t *testing.T, a, b T) {
+	t.Helper()
+	limiter := newAttemptLimiter[T](5, 50*time.Millisecond)
 
-	limiter.recordFailed("a@example.com")
-	limiter.recordFailed("b@example.com")
+	limiter.recordFailed(a)
+	limiter.recordFailed(b)
 	if len(limiter.attempts) != 2 {
 		t.Fatalf("setup: got %d entries, want 2", len(limiter.attempts))
 	}
@@ -333,25 +316,11 @@ func TestLoginAttemptLimiterPrune(t *testing.T) {
 	}
 }
 
-func TestPasswordAttemptLimiterPrune(t *testing.T) {
-	limiter := newAttemptLimiter[int64](5, 50*time.Millisecond)
-
-	limiter.recordFailed(1)
-	limiter.recordFailed(2)
-	if len(limiter.attempts) != 2 {
-		t.Fatalf("setup: got %d entries, want 2", len(limiter.attempts))
-	}
-
-	limiter.prune()
-	if len(limiter.attempts) != 2 {
-		t.Errorf("prune should not remove entries still in window: got %d, want 2", len(limiter.attempts))
-	}
-
-	time.Sleep(80 * time.Millisecond)
-	limiter.prune()
-	if len(limiter.attempts) != 0 {
-		t.Errorf("prune should remove expired entries: got %d, want 0", len(limiter.attempts))
-	}
+func TestAttemptLimiterPrune(t *testing.T) {
+	t.Run("int64", func(t *testing.T) { testAttemptLimiterPrune[int64](t, 1, 2) })
+	t.Run("string", func(t *testing.T) {
+		testAttemptLimiterPrune(t, "a@example.com", "b@example.com")
+	})
 }
 
 func TestRoutes(t *testing.T) {
