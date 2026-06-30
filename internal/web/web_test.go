@@ -18,6 +18,7 @@ import (
 )
 
 func TestHashVerify(t *testing.T) {
+	t.Parallel()
 	hash, err := hashPassword("correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +35,7 @@ func TestHashVerify(t *testing.T) {
 }
 
 func TestDummyHashUsable(t *testing.T) {
+	t.Parallel()
 	// handleLogin verifies against dummyHash when an email matches no account; a
 	// blank value (hashPassword failing at init) would skip the argon2 work and
 	// reopen the timing oracle.
@@ -46,6 +48,7 @@ func TestDummyHashUsable(t *testing.T) {
 }
 
 func TestClientKey(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 	req := httptest.NewRequest(http.MethodGet, routes.API42Sync.URL(), nil)
 	req.Header.Set("X-Real-IP", "1.2.3.4")
@@ -62,6 +65,7 @@ func TestClientKey(t *testing.T) {
 }
 
 func TestSyncRejectsCrossSite(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 
 	req := httptest.NewRequest(http.MethodGet, routes.API42Sync.URL(), nil)
@@ -87,6 +91,7 @@ func TestSyncRejectsCrossSite(t *testing.T) {
 }
 
 func TestValidEmail(t *testing.T) {
+	t.Parallel()
 	cases := map[string]bool{
 		"a@b.co": true, "user@school.42.fr": true,
 		"nope": false, "no@at": false, "@b.co": false, "a@.co": true, // loose by design
@@ -99,6 +104,7 @@ func TestValidEmail(t *testing.T) {
 }
 
 func TestStreamEmitsDone(t *testing.T) {
+	t.Parallel()
 	s := &Server{jobs: newJobRegistry()}
 	id, j, _ := s.jobs.create("")
 	j.finish(map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, 42, "tester")
@@ -121,6 +127,7 @@ func TestStreamEmitsDone(t *testing.T) {
 }
 
 func TestStreamSignalsMatch(t *testing.T) {
+	t.Parallel()
 	s := &Server{jobs: newJobRegistry()}
 	id, j, _ := s.jobs.create("")
 	j.linkAccount(7, "tester")
@@ -137,6 +144,7 @@ func TestStreamSignalsMatch(t *testing.T) {
 }
 
 func TestCreateRejectsConcurrentClient(t *testing.T) {
+	t.Parallel()
 	r := newJobRegistry()
 
 	_, j1, ok := r.create("ip:1.2.3.4")
@@ -166,6 +174,7 @@ func TestCreateRejectsConcurrentClient(t *testing.T) {
 }
 
 func TestRunningCount(t *testing.T) {
+	t.Parallel()
 	r := newJobRegistry()
 
 	if n := r.runningCount(); n != 0 {
@@ -190,6 +199,7 @@ func TestRunningCount(t *testing.T) {
 }
 
 func TestMarkSlowLatches(t *testing.T) {
+	t.Parallel()
 	r := newJobRegistry()
 	_, j, _ := r.create("")
 
@@ -210,6 +220,7 @@ func TestMarkSlowLatches(t *testing.T) {
 }
 
 func TestHasRunning(t *testing.T) {
+	t.Parallel()
 	r := newJobRegistry()
 
 	if r.hasRunning("ip:1.2.3.4") {
@@ -243,6 +254,7 @@ func TestHasRunning(t *testing.T) {
 }
 
 func TestSecureCookieFlag(t *testing.T) {
+	t.Parallel()
 	for _, secure := range []bool{false, true} {
 		s := &Server{secure: secure}
 		rec := httptest.NewRecorder()
@@ -258,6 +270,7 @@ func TestSecureCookieFlag(t *testing.T) {
 }
 
 func TestNotFoundHandler(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 	rec := httptest.NewRecorder()
 	s.handleNotFound(rec, httptest.NewRequest(http.MethodGet, "/nope", nil))
@@ -320,6 +333,7 @@ func testAttemptLimiterBehaviour[T comparable](t *testing.T, key, other T) {
 }
 
 func TestAttemptLimiterBehaviour(t *testing.T) {
+	t.Parallel()
 	t.Run("int64", func(t *testing.T) { testAttemptLimiterBehaviour[int64](t, 1, 2) })
 	t.Run("string", func(t *testing.T) {
 		testAttemptLimiterBehaviour(t, "user@example.com", "other@example.com")
@@ -327,6 +341,7 @@ func TestAttemptLimiterBehaviour(t *testing.T) {
 }
 
 func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
+	t.Parallel()
 	clk := &fakeClock{t: time.Unix(0, 0)}
 	limiter := newAttemptLimiter[string](2, 50*time.Millisecond)
 	limiter.now = clk.now
@@ -375,6 +390,7 @@ func testAttemptLimiterPrune[T comparable](t *testing.T, a, b T) {
 }
 
 func TestAttemptLimiterPrune(t *testing.T) {
+	t.Parallel()
 	t.Run("int64", func(t *testing.T) { testAttemptLimiterPrune[int64](t, 1, 2) })
 	t.Run("string", func(t *testing.T) {
 		testAttemptLimiterPrune(t, "a@example.com", "b@example.com")
@@ -382,6 +398,7 @@ func TestAttemptLimiterPrune(t *testing.T) {
 }
 
 func TestRoutes(t *testing.T) {
+	t.Parallel()
 	h := (&Server{}).routes()
 	cases := []struct {
 		method, path string
@@ -413,6 +430,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestLogoutRedirectsWithSeeOther(t *testing.T) {
+	t.Parallel()
 	h := (&Server{}).routes()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, routes.APILogOut.URL(), nil))
@@ -425,6 +443,7 @@ func TestLogoutRedirectsWithSeeOther(t *testing.T) {
 }
 
 func TestSyncingPageHidesErrorActions(t *testing.T) {
+	t.Parallel()
 	s := &Server{}
 	rec := httptest.NewRecorder()
 	s.handleSyncing(rec, httptest.NewRequest(http.MethodGet, routes.PageSyncing, nil))
@@ -438,6 +457,7 @@ func TestSyncingPageHidesErrorActions(t *testing.T) {
 }
 
 func TestParseVisibilityFormURLEncoded(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodPatch, routes.APIAccountVisibility.URL(), strings.NewReader("is_public=on&section_projects_users=on"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	isPublic, sections, err := parseVisibilityForm(req)
@@ -462,6 +482,7 @@ func TestParseVisibilityFormURLEncoded(t *testing.T) {
 }
 
 func TestParseVisibilityFormMultipart(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	if err := writer.WriteField("section_locations", "on"); err != nil {
@@ -491,6 +512,7 @@ func TestParseVisibilityFormMultipart(t *testing.T) {
 }
 
 func TestParseVisibilityFormRestoreDefaults(t *testing.T) {
+	t.Parallel()
 	// Simulate the restore defaults form: hidden inputs for every section that
 	// is public by default, no is_public field.
 	body := "section_projects_users=on" +
@@ -532,6 +554,7 @@ func TestParseVisibilityFormRestoreDefaults(t *testing.T) {
 }
 
 func TestProfileHidesResyncDuringCooldown(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()

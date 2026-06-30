@@ -26,6 +26,7 @@ const rawEval = `[{
 const rawEvalProjects = `[{"project": {"id": 1337, "name": "ft_transcendence"}}]`
 
 func TestCurateStripsThirdPartyIdentities(t *testing.T) {
+	t.Parallel()
 	out := Curate(map[string]json.RawMessage{
 		"scale_teams_as_corrected": json.RawMessage(rawEval),
 		"projects_users":           json.RawMessage(rawEvalProjects),
@@ -73,6 +74,7 @@ func TestCurateStripsThirdPartyIdentities(t *testing.T) {
 // survives, while default-style "<x>'s group"/"<x>'s team" names (which embed
 // identities) are dropped regardless of capitalisation.
 func TestCurateKeepsDistinctiveTeamName(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		want string
@@ -96,6 +98,7 @@ func TestCurateKeepsDistinctiveTeamName(t *testing.T) {
 }
 
 func TestCurateResolvesEvalProjectName(t *testing.T) {
+	t.Parallel()
 	// projects_users supplies the display name for projects the owner enrolled in;
 	// evals on projects the owner only corrected fall back to the gitlab path slug.
 	cases := []struct {
@@ -156,6 +159,7 @@ func mustJSON(s string) string {
 }
 
 func TestCurateProfileAndTitles(t *testing.T) {
+	t.Parallel()
 	rawMe := `{
 		"login": "owner", "displayname": "Test User", "email": "t@e.st",
 		"wallet": 100, "correction_point": 7,
@@ -190,6 +194,7 @@ func TestCurateProfileAndTitles(t *testing.T) {
 }
 
 func TestCurateIsPresenceDriven(t *testing.T) {
+	t.Parallel()
 	// Only-locations input (a partial re-sync) must not synthesise a me/titles_users
 	// key, or the store's merge would clobber the existing profile.
 	out := Curate(map[string]json.RawMessage{"locations": json.RawMessage(`[{"host":"c1","begin_at":"x"}]`)})
@@ -216,7 +221,9 @@ func TestCurateIsPresenceDriven(t *testing.T) {
 		t.Error("standalone cursus_users should be dropped")
 	}
 }
+
 func TestLoginScrubber(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		logins []string
@@ -236,6 +243,7 @@ func TestLoginScrubber(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
 			if got := loginScrubber(c.logins)(c.in); got != c.want {
 				t.Errorf("loginScrubber(%v)(%q) = %q, want %q", c.logins, c.in, got, c.want)
 			}

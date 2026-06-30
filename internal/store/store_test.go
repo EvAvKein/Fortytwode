@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,9 +14,10 @@ import (
 )
 
 func TestAccountsAndSessions(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	unique := time.Now().UnixNano()
+	unique := uniqueID()
 	email := fmt.Sprintf("user-%d@e.st", unique)
 	login := fmt.Sprintf("tester%d", unique)
 	ftID := unique
@@ -32,8 +34,10 @@ func TestAccountsAndSessions(t *testing.T) {
 
 	// email, ft_id and ft_login are each independently UNIQUE, so each duplicate
 	// is tested in isolation by colliding on one field while varying the others.
+	// The non-colliding fields use a fresh uniqueID() (not ftID+1) so a parallel
+	// test can't accidentally own that id and turn this into an ft_id collision.
 	t.Run("DuplicateEmail", func(t *testing.T) {
-		if _, err := st.CreateAccount(ctx, email, "h", ftID+1, "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
+		if _, err := st.CreateAccount(ctx, email, "h", uniqueID(), "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
 			t.Errorf("got %v, want ErrDuplicate", err)
 		}
 	})
@@ -117,9 +121,10 @@ func TestAccountsAndSessions(t *testing.T) {
 }
 
 func TestReserveSync(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	ftID := time.Now().UnixNano()
+	ftID := uniqueID()
 	t.Cleanup(func() { st.TestPool().Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
 
 	cooldown := time.Hour
@@ -159,9 +164,10 @@ func TestReserveSync(t *testing.T) {
 }
 
 func TestDeleteAccount(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	unique := time.Now().UnixNano()
+	unique := uniqueID()
 	login := fmt.Sprintf("del%d", unique)
 	data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
 
@@ -186,9 +192,10 @@ func TestDeleteAccount(t *testing.T) {
 }
 
 func TestPurgeStaleCooldowns(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	ftID := time.Now().UnixNano()
+	ftID := uniqueID()
 	t.Cleanup(func() { st.TestPool().Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
 
 	if _, err := st.TestPool().Exec(ctx,
@@ -204,9 +211,10 @@ func TestPurgeStaleCooldowns(t *testing.T) {
 }
 
 func TestPurgeExpiredSessions(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	unique := time.Now().UnixNano()
+	unique := uniqueID()
 	login := fmt.Sprintf("purge%d", unique)
 	data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
 
@@ -240,9 +248,10 @@ func TestPurgeExpiredSessions(t *testing.T) {
 }
 
 func TestAccountCredentialsAndSessions(t *testing.T) {
+	t.Parallel()
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
-	unique := time.Now().UnixNano()
+	unique := uniqueID()
 	email := fmt.Sprintf("cred-%d@e.st", unique)
 	login := fmt.Sprintf("cred%d", unique)
 	ftID := unique
@@ -265,7 +274,7 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	}
 
 	otherLogin := fmt.Sprintf("other%d", unique)
-	otherID, err := st.CreateAccount(ctx, email, "h", ftID+1, otherLogin, map[string]json.RawMessage{
+	otherID, err := st.CreateAccount(ctx, email, "h", uniqueID(), otherLogin, map[string]json.RawMessage{
 		"me": json.RawMessage(`{"login":"` + otherLogin + `"}`),
 	})
 	if err != nil {
@@ -311,6 +320,17 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 		t.Errorf("other session should be deleted: got %v, want ErrNotFound", err)
 	}
 }
+
+var (
+	testIDBase = time.Now().UnixNano()
+	testIDSeq  atomic.Int64
+)
+
+// uniqueID returns an int64 unique to this call. The per-process base keeps it
+// distinct from rows any earlier test run may have left behind, while the atomic
+// counter guarantees no two calls collide — needed now that the tests run with
+// t.Parallel() and a coarse clock could otherwise hand out duplicate seeds.
+func uniqueID() int64 { return testIDBase + testIDSeq.Add(1) }
 
 func keys(m map[string]json.RawMessage) []string {
 	var ks []string

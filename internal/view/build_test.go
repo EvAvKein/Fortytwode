@@ -6,6 +6,7 @@ import (
 )
 
 func TestSectionPublic(t *testing.T) {
+	t.Parallel()
 	// coalitions, locations, skills, contact, and points are private by default; others public by default; overrides win.
 	for _, key := range []string{"locations", "skills", "contact", "points"} {
 		if SectionPublic(nil, key) {
@@ -30,6 +31,7 @@ func TestSectionPublic(t *testing.T) {
 }
 
 func TestBuildVisibility(t *testing.T) {
+	t.Parallel()
 	snaps := map[string]json.RawMessage{
 		"me": json.RawMessage(`{
 			"login":"tester",
@@ -144,6 +146,7 @@ func TestBuildVisibility(t *testing.T) {
 // An empty snapshot map has no "me" resource, so Build can't unmarshal the
 // profile and must degrade to an error page rather than panicking.
 func TestBuildEmptySnapshot(t *testing.T) {
+	t.Parallel()
 	d := Build(map[string]json.RawMessage{}, true, nil)
 	if !d.IsError {
 		t.Errorf("empty snapshot should yield an error page, got %+v", d)
@@ -152,6 +155,7 @@ func TestBuildEmptySnapshot(t *testing.T) {
 
 // A malformed "me" snapshot is reported as an error page, not a panic.
 func TestBuildInvalidMe(t *testing.T) {
+	t.Parallel()
 	d := Build(map[string]json.RawMessage{"me": json.RawMessage(`{not json`)}, true, nil)
 	if !d.IsError {
 		t.Errorf("invalid \"me\" should yield an error page, got %+v", d)

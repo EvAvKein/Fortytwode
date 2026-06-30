@@ -6,6 +6,7 @@ import (
 )
 
 func TestFormatSyncTime(t *testing.T) {
+	t.Parallel()
 	if got := FormatSyncTime(time.Time{}); got != "" {
 		t.Errorf("zero time: got %q, want empty", got)
 	}
@@ -23,6 +24,7 @@ func TestFormatSyncTime(t *testing.T) {
 }
 
 func TestAgo(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	cases := []struct {
 		d    time.Duration
@@ -51,6 +53,7 @@ func TestAgo(t *testing.T) {
 }
 
 func TestIn(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		d    time.Duration
 		want string
