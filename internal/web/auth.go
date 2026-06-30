@@ -183,6 +183,7 @@ type attemptLimiter[T comparable] struct {
 	attempts map[T][]time.Time
 	max      int
 	window   time.Duration
+	now      func() time.Time // overridable for deterministic tests; defaults to time.Now
 }
 
 func newAttemptLimiter[T comparable](max int, window time.Duration) *attemptLimiter[T] {
@@ -190,6 +191,7 @@ func newAttemptLimiter[T comparable](max int, window time.Duration) *attemptLimi
 		attempts: make(map[T][]time.Time),
 		max:      max,
 		window:   window,
+		now:      time.Now,
 	}
 }
 
@@ -202,7 +204,7 @@ func (a *attemptLimiter[T]) allowed(key T) bool {
 func (a *attemptLimiter[T]) recordFailed(key T) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.attempts[key] = append(a.attempts[key], time.Now())
+	a.attempts[key] = append(a.attempts[key], a.now())
 }
 
 func (a *attemptLimiter[T]) clear(key T) {
@@ -217,7 +219,7 @@ func (a *attemptLimiter[T]) clear(key T) {
 func (a *attemptLimiter[T]) prune() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	cutoff := time.Now().Add(-a.window)
+	cutoff := a.now().Add(-a.window)
 	for key, list := range a.attempts {
 		kept := list[:0]
 		for _, t := range list {
@@ -234,7 +236,7 @@ func (a *attemptLimiter[T]) prune() {
 }
 
 func (a *attemptLimiter[T]) countRecentLocked(key T) int {
-	cutoff := time.Now().Add(-a.window)
+	cutoff := a.now().Add(-a.window)
 	list := a.attempts[key]
 	kept := list[:0]
 	for _, t := range list {

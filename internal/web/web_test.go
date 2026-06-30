@@ -225,13 +225,23 @@ func TestNotFoundHandler(t *testing.T) {
 	}
 }
 
+// fakeClock is a controllable time source for the rate-limiter tests, letting
+// them advance past a limiter's window deterministically instead of sleeping.
+// The limiter drives it from a single goroutine, so no locking is needed.
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time          { return c.t }
+func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
 // testAttemptLimiterBehaviour exercises the full lifecycle of an attemptLimiter:
 // it allows up to max attempts, blocks the next one, recovers after the window
 // expires, resets on clear, and tracks keys independently. It is generic so the
 // int64 (account ID) and string (email) limiters share one test body.
 func testAttemptLimiterBehaviour[T comparable](t *testing.T, key, other T) {
 	t.Helper()
+	clk := &fakeClock{t: time.Unix(0, 0)}
 	limiter := newAttemptLimiter[T](3, 100*time.Millisecond)
+	limiter.now = clk.now
 
 	// The first three attempts are allowed.
 	for i := 0; i < 3; i++ {
@@ -247,7 +257,7 @@ func testAttemptLimiterBehaviour[T comparable](t *testing.T, key, other T) {
 	}
 
 	// After the window passes, attempts are allowed again.
-	time.Sleep(150 * time.Millisecond)
+	clk.advance(150 * time.Millisecond)
 	if !limiter.allowed(key) {
 		t.Error("attempts should be allowed after the window expires")
 	}
@@ -273,7 +283,9 @@ func TestAttemptLimiterBehaviour(t *testing.T) {
 }
 
 func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(0, 0)}
 	limiter := newAttemptLimiter[string](2, 50*time.Millisecond)
+	limiter.now = clk.now
 	email := "prune@example.com"
 
 	limiter.recordFailed(email)
@@ -282,7 +294,7 @@ func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
 		t.Error("should be blocked after max attempts")
 	}
 
-	time.Sleep(80 * time.Millisecond)
+	clk.advance(80 * time.Millisecond)
 	if !limiter.allowed(email) {
 		t.Error("should be allowed after window expires")
 	}
@@ -296,7 +308,9 @@ func TestLoginAttemptLimiterPrunesKeys(t *testing.T) {
 // int64 and string limiters share one test body.
 func testAttemptLimiterPrune[T comparable](t *testing.T, a, b T) {
 	t.Helper()
+	clk := &fakeClock{t: time.Unix(0, 0)}
 	limiter := newAttemptLimiter[T](5, 50*time.Millisecond)
+	limiter.now = clk.now
 
 	limiter.recordFailed(a)
 	limiter.recordFailed(b)
@@ -309,7 +323,7 @@ func testAttemptLimiterPrune[T comparable](t *testing.T, a, b T) {
 		t.Errorf("prune should not remove entries still in window: got %d, want 2", len(limiter.attempts))
 	}
 
-	time.Sleep(80 * time.Millisecond)
+	clk.advance(80 * time.Millisecond)
 	limiter.prune()
 	if len(limiter.attempts) != 0 {
 		t.Errorf("prune should remove expired entries: got %d, want 0", len(limiter.attempts))
