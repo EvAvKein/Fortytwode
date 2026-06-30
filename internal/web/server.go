@@ -125,7 +125,10 @@ func render(w http.ResponseWriter, r *http.Request, c templ.Component) {
 // status. The status must be written after the headers and before the body.
 func renderStatus(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
+	// no-transform stops Cloudflare from injecting its JavaScript Detections inline
+	// <script> into the HTML (it cannot be disabled from the dashboard under Bot Fight
+	// Mode); that inline script would otherwise be blocked and logged by script-src 'self'.
+	w.Header().Set("Cache-Control", "no-store, no-transform")
 	w.WriteHeader(status)
 	if err := c.Render(r.Context(), w); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: render failed: %v\n", err)
