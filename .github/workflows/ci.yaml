@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: ["main"]
 
+# Cancel a branch's in-progress run when a newer commit is pushed to it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   Go:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     # Postgres for the store integration tests. Open() applies the embedded
     # schema, so no migration step is needed — just point DATABASE_URL here.
