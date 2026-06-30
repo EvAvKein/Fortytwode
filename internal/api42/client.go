@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 
@@ -101,7 +102,7 @@ func (client *Client) request(ctx context.Context, path string, params url.Value
 				return nil, 0, fmt.Errorf("%d for %s after %d retries", res.StatusCode, path, maxRetries)
 			}
 			wait := backoff(res.Header.Get("Retry-After"), attempt)
-			fmt.Printf("  %d on %s; backing off %s (attempt %d)\n", res.StatusCode, path, wait, attempt+1)
+			fmt.Fprintf(os.Stderr, "warning: 42 API retry: %d on %s; backing off %s (attempt %d)\n", res.StatusCode, path, wait, attempt+1)
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
