@@ -203,6 +203,18 @@ func deref(p *string) string {
 	return *p
 }
 
+// projectSlug returns the trailing segment of a project's gitlab path
+// ("pedago_world/.../minitalk" -> "minitalk"), the only project identity a
+// scale_team payload carries. Used as a fallback name for evals on projects the
+// owner never enrolled in (so projects_users has no entry to resolve).
+func projectSlug(p *string) string {
+	s := deref(p)
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
 // ----------------------------------------------------------------------------
 // Per-resource mappers (api42.* -> curated)
 // ----------------------------------------------------------------------------
@@ -294,7 +306,7 @@ func evalFrom(st api42.ScaleTeam, ownerLogin string, projectNames map[int]string
 	}
 
 	e := Eval{
-		Project:      projectNames[st.Team.ProjectID],
+		Project:      cmp.Or(projectNames[st.Team.ProjectID], projectSlug(st.Team.ProjectGitlabPath)),
 		Team:         team,
 		FinalMark:    st.FinalMark,
 		FlagName:     st.Flag.Name,

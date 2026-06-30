@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -91,6 +92,61 @@ func TestCurateKeepsDistinctiveTeamName(t *testing.T) {
 		if evals[0].Team != tc.want {
 			t.Errorf("team %q: got %q, want %q", tc.name, evals[0].Team, tc.want)
 		}
+	}
+}
+
+func TestCurateResolvesEvalProjectName(t *testing.T) {
+	// projects_users supplies the display name for projects the owner enrolled in;
+	// evals on projects the owner only corrected fall back to the gitlab path slug.
+	cases := []struct {
+		name       string
+		projectID  int
+		gitlabPath string // empty -> field omitted
+		projects   string // projects_users JSON, empty -> key omitted
+		want       string
+	}{
+		{
+			name:       "map hit wins over gitlab path",
+			projectID:  1,
+			gitlabPath: "pedago_world/42-cursus/inner-circle/minitalk",
+			projects:   `[{"project": {"id": 1, "name": "CPP Module 09"}}]`,
+			want:       "CPP Module 09",
+		},
+		{
+			name:       "map miss falls back to gitlab slug",
+			projectID:  2005,
+			gitlabPath: "pedago_world/42-cursus/inner-circle/minitalk",
+			projects:   `[{"project": {"id": 1, "name": "CPP Module 09"}}]`,
+			want:       "minitalk",
+		},
+		{
+			name:      "map miss and no gitlab path stays empty",
+			projectID: 2005,
+			want:      "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			team := `"project_id": ` + strconv.Itoa(tc.projectID)
+			if tc.gitlabPath != "" {
+				team += `, "project_gitlab_path": ` + mustJSON(tc.gitlabPath)
+			}
+			raw := map[string]json.RawMessage{
+				"scale_teams_as_corrector": json.RawMessage(
+					`[{"begin_at": "x", "flag": {}, "team": {` + team + `}}]`),
+			}
+			if tc.projects != "" {
+				raw["projects_users"] = json.RawMessage(tc.projects)
+			}
+			out := Curate(raw)
+			var evals []Eval
+			if err := json.Unmarshal(out["scale_teams_as_corrector"], &evals); err != nil {
+				t.Fatalf("unmarshal curated: %v", err)
+			}
+			if evals[0].Project != tc.want {
+				t.Errorf("project: got %q, want %q", evals[0].Project, tc.want)
+			}
+		})
 	}
 }
 
