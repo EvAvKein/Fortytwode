@@ -8,13 +8,12 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/routes"
-	"github.com/EvAvKein/Fortytwode/internal/store"
+	"github.com/EvAvKein/Fortytwode/internal/storetest"
 	"github.com/EvAvKein/Fortytwode/internal/view"
 )
 
@@ -505,18 +504,8 @@ func TestParseVisibilityFormRestoreDefaults(t *testing.T) {
 	}
 }
 
-func testStore(t *testing.T) *store.Store {
-	t.Helper()
-	st, err := store.Open(context.Background(), os.Getenv("DATABASE_URL"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(st.Close)
-	return st
-}
-
 func TestProfileHidesResyncDuringCooldown(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()
 	email := fmt.Sprintf("user-%d@e.st", unique)

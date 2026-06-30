@@ -1,27 +1,19 @@
-package store
+package store_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
+
+	"github.com/EvAvKein/Fortytwode/internal/store"
+	"github.com/EvAvKein/Fortytwode/internal/storetest"
 )
 
-func testStore(t *testing.T) *Store {
-	t.Helper()
-	st, err := Open(context.Background(), os.Getenv("DATABASE_URL"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(st.Close)
-	return st
-}
-
 func TestAccountsAndSessions(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()
 	email := fmt.Sprintf("user-%d@e.st", unique)
@@ -36,10 +28,10 @@ func TestAccountsAndSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, id) })
+	t.Cleanup(func() { st.DeleteAccount(ctx, id) })
 
 	// Duplicate email/ft_id is reported as ErrDuplicate.
-	if _, err := st.CreateAccount(ctx, email, "h", ftID, login, data); !errors.Is(err, ErrDuplicate) {
+	if _, err := st.CreateAccount(ctx, email, "h", ftID, login, data); !errors.Is(err, store.ErrDuplicate) {
 		t.Errorf("duplicate create: got %v, want ErrDuplicate", err)
 	}
 
@@ -53,7 +45,7 @@ func TestAccountsAndSessions(t *testing.T) {
 	if acc, err := st.AccountByFtID(ctx, ftID); err != nil || acc.ID != id {
 		t.Errorf("AccountByFtID: %+v %v", acc, err)
 	}
-	if _, err := st.AccountByLogin(ctx, "nobody-"+login); !errors.Is(err, ErrNotFound) {
+	if _, err := st.AccountByLogin(ctx, "nobody-"+login); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("missing login: got %v, want ErrNotFound", err)
 	}
 
@@ -88,7 +80,7 @@ func TestAccountsAndSessions(t *testing.T) {
 	if err := st.DeleteSession(ctx, sid); err != nil {
 		t.Fatalf("delete session: %v", err)
 	}
-	if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, ErrNotFound) {
+	if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("deleted session: got %v, want ErrNotFound", err)
 	}
 
@@ -96,16 +88,16 @@ func TestAccountsAndSessions(t *testing.T) {
 	if err := st.CreateSession(ctx, expired, id, time.Now().Add(-time.Minute)); err != nil {
 		t.Fatalf("create expired session: %v", err)
 	}
-	if _, err := st.SessionAccount(ctx, expired); !errors.Is(err, ErrNotFound) {
+	if _, err := st.SessionAccount(ctx, expired); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("expired session: got %v, want ErrNotFound", err)
 	}
 }
 
 func TestReserveSync(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	ftID := time.Now().UnixNano()
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
+	t.Cleanup(func() { st.TestPool().Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
 
 	cooldown := time.Hour
 
@@ -144,7 +136,7 @@ func TestReserveSync(t *testing.T) {
 }
 
 func TestDeleteAccount(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()
 	login := fmt.Sprintf("del%d", unique)
@@ -162,21 +154,21 @@ func TestDeleteAccount(t *testing.T) {
 	if err := st.DeleteAccount(ctx, id); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := st.AccountByLogin(ctx, login); !errors.Is(err, ErrNotFound) {
+	if _, err := st.AccountByLogin(ctx, login); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("account after delete: got %v, want ErrNotFound", err)
 	}
-	if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, ErrNotFound) {
+	if _, err := st.SessionAccount(ctx, sid); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("session should cascade away: got %v, want ErrNotFound", err)
 	}
 }
 
 func TestPurgeStaleCooldowns(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	ftID := time.Now().UnixNano()
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
+	t.Cleanup(func() { st.TestPool().Exec(ctx, `DELETE FROM sync_cooldowns WHERE ft_id=$1`, ftID) })
 
-	if _, err := st.pool.Exec(ctx,
+	if _, err := st.TestPool().Exec(ctx,
 		`INSERT INTO sync_cooldowns (ft_id, last_sync_at) VALUES ($1, now() - interval '2 hours')`, ftID); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -189,7 +181,7 @@ func TestPurgeStaleCooldowns(t *testing.T) {
 }
 
 func TestPurgeExpiredSessions(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()
 	login := fmt.Sprintf("purge%d", unique)
@@ -199,7 +191,7 @@ func TestPurgeExpiredSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, id) })
+	t.Cleanup(func() { st.DeleteAccount(ctx, id) })
 
 	expired, live := "pexp-"+login, "plive-"+login
 	if err := st.CreateSession(ctx, expired, id, time.Now().Add(-time.Minute)); err != nil {
@@ -215,7 +207,7 @@ func TestPurgeExpiredSessions(t *testing.T) {
 
 	// The expired row is gone outright (not just filtered by the lookup)...
 	var count int
-	if err := st.pool.QueryRow(ctx, `SELECT count(*) FROM sessions WHERE id=$1`, expired).Scan(&count); err != nil || count != 0 {
+	if err := st.TestPool().QueryRow(ctx, `SELECT count(*) FROM sessions WHERE id=$1`, expired).Scan(&count); err != nil || count != 0 {
 		t.Errorf("expired session row: count=%d err=%v, want 0/nil", count, err)
 	}
 	// ...and the live one survives.
@@ -225,7 +217,7 @@ func TestPurgeExpiredSessions(t *testing.T) {
 }
 
 func TestAccountCredentialsAndSessions(t *testing.T) {
-	st := testStore(t)
+	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	unique := time.Now().UnixNano()
 	email := fmt.Sprintf("cred-%d@e.st", unique)
@@ -238,7 +230,7 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, id) })
+	t.Cleanup(func() { st.DeleteAccount(ctx, id) })
 
 	// UpdateEmail changes the address and reports duplicates.
 	newEmail := fmt.Sprintf("new-%d@e.st", unique)
@@ -256,8 +248,8 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create other account: %v", err)
 	}
-	t.Cleanup(func() { st.pool.Exec(ctx, `DELETE FROM accounts WHERE id=$1`, otherID) })
-	if err := st.UpdateEmail(ctx, id, email); !errors.Is(err, ErrDuplicate) {
+	t.Cleanup(func() { st.DeleteAccount(ctx, otherID) })
+	if err := st.UpdateEmail(ctx, id, email); !errors.Is(err, store.ErrDuplicate) {
 		t.Errorf("duplicate email update: got %v, want ErrDuplicate", err)
 	}
 
@@ -265,7 +257,7 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	if hash, err := st.AccountPasswordHash(ctx, id); err != nil || hash != "hash$value" {
 		t.Errorf("password hash: got %q %v", hash, err)
 	}
-	if _, err := st.AccountPasswordHash(ctx, 0); !errors.Is(err, ErrNotFound) {
+	if _, err := st.AccountPasswordHash(ctx, 0); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("missing account hash: got %v, want ErrNotFound", err)
 	}
 
@@ -292,7 +284,7 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	if got, err := st.SessionAccount(ctx, current); err != nil || got.ID != id {
 		t.Errorf("current session should survive: %+v %v", got, err)
 	}
-	if _, err := st.SessionAccount(ctx, other); !errors.Is(err, ErrNotFound) {
+	if _, err := st.SessionAccount(ctx, other); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("other session should be deleted: got %v, want ErrNotFound", err)
 	}
 }
