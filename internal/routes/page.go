@@ -9,6 +9,9 @@ const (
 	PageLogin    = "/login"
 	PageSettings = "/settings"
 	PagePrivacy  = "/privacy"
+	PageVerifyPending = "/verify-pending"
+	PageVerifyEmail   = "/verify-email"
+	PageConfirmDelete = "/confirm-delete"
 )
 
 // PageProfile returns the canonical profile page path for a 42 login.

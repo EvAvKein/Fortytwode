@@ -98,8 +98,11 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 			</p>
 			<div class="danger-zone">
 				<h2>Delete my data</h2>
-				<p class="muted">Permanently erase your account and the stored 42 snapshot.<br/>This can't be undone.</p>
-				<form method="post" action={ routes.APIAccountDelete.URL() } data-method={ routes.APIAccountDelete.MethodLower() } data-confirm="Permanently delete your account and all stored data? This cannot be undone.">
+				if d.DeletionRequested {
+					<p class="good">Check your email for a confirmation link.</p>
+				}
+				<p class="muted">Permanently erase your account and the stored 42 snapshot.<br/>We'll email you a link to confirm before anything is deleted.</p>
+				<form method="post" action={ routes.APIAccountDelete.URL() } data-method={ routes.APIAccountDelete.MethodLower() } data-confirm="Send a confirmation link to delete your account and all stored data?">
 					<button type="submit" class="button danger">Delete my data</button>
 				</form>
 			</div>

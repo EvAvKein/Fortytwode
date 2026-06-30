@@ -31,19 +31,22 @@ func APIPrefix() string { return config.AppAPIPrefix() }
 // the exact paths in those files. The OAuth redirect URI registered on the 42
 // app must match APIAuth42Callback as well.
 var (
-	APIAuth42Login         = Route{Method: "GET", Path: "/auth/42/login"}
-	APIAuth42Callback      = Route{Method: "GET", Path: "/auth/42/callback"}
-	API42Sync              = Route{Method: "GET", Path: "/sync"}
-	APISyncStream          = Route{Method: "GET", Path: "/sync/stream"}
-	APISyncDownloadRaw     = Route{Method: "GET", Path: "/sync/download/raw"}
-	APISyncDownloadCurated = Route{Method: "GET", Path: "/sync/download/curated"}
-	APILogInSync           = Route{Method: "POST", Path: "/session/sync"}
-	APILogIn               = Route{Method: "POST", Path: "/session"}
-	APILogOut              = Route{Method: "DELETE", Path: "/session"}
-	APIAccountCreate       = Route{Method: "POST", Path: "/account"}
-	APIAccountDownload     = Route{Method: "GET", Path: "/account/download"}
-	APIAccountVisibility   = Route{Method: "PATCH", Path: "/account/visibility"}
-	APIAccountEmail        = Route{Method: "PATCH", Path: "/account/email"}
-	APIAccountPassword     = Route{Method: "PATCH", Path: "/account/password"}
-	APIAccountDelete       = Route{Method: "DELETE", Path: "/account"}
+	APIAuth42Login          = Route{Method: "GET", Path: "/auth/42/login"}
+	APIAuth42Callback       = Route{Method: "GET", Path: "/auth/42/callback"}
+	API42Sync               = Route{Method: "GET", Path: "/sync"}
+	APISyncStream           = Route{Method: "GET", Path: "/sync/stream"}
+	APISyncDownloadRaw      = Route{Method: "GET", Path: "/sync/download/raw"}
+	APISyncDownloadCurated  = Route{Method: "GET", Path: "/sync/download/curated"}
+	APILogInSync            = Route{Method: "POST", Path: "/session/sync"}
+	APILogIn                = Route{Method: "POST", Path: "/session"}
+	APILogOut               = Route{Method: "DELETE", Path: "/session"}
+	APIAccountCreate        = Route{Method: "POST", Path: "/account"}
+	APIAccountDownload      = Route{Method: "GET", Path: "/account/download"}
+	APIAccountVisibility    = Route{Method: "PATCH", Path: "/account/visibility"}
+	APIAccountEmail         = Route{Method: "PATCH", Path: "/account/email"}
+	APIAccountPassword      = Route{Method: "PATCH", Path: "/account/password"}
+	APIAccountDelete        = Route{Method: "DELETE", Path: "/account"}
+	APIAccountDeleteConfirm = Route{Method: "POST", Path: "/account/delete/confirm"}
+	APIVerifyResend         = Route{Method: "POST", Path: "/account/verify/resend"}
+	APIVerifyEmailEdit      = Route{Method: "PATCH", Path: "/account/verify/email"}
 )

@@ -29,12 +29,32 @@ func AppAPIPrefix() string { return "/api/" + AppAPIVersion }
 // behaves differently between the Makefile's `include .env` and a shell `source`.
 const defaultScope = "public"
 
-// Config holds everything needed to authenticate against the 42 API.
+// The verification email's From header is assembled from a code-side display name
+// and an env-configurable address. The name lives in code because the full
+// "Name <addr>" header has a space and `<` that the documented shell-source path
+// (`set -a; . ./.env`) would mangle; only the bare address is exposed via
+// MAIL_FROM_ADDRESS. It sends from the dedicated mail subdomain (its own DKIM/SPF),
+// clear of Cloudflare Email Routing, which owns the root domain's inbound MX/SPF.
+const (
+	defaultMailFromName    = "Fortytwode"
+	defaultMailFromAddress = "no-reply@mail.fortytwode.net"
+)
+
+// Config holds everything needed to authenticate against the 42 API and to send
+// the transactional verification email.
 type Config struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURI  string
 	Scope        string
+
+	// Transactional email (Resend). ResendAPIKey is required to actually send;
+	// when empty, the email layer logs and skips so local dev still works. MailFrom
+	// is the assembled "Name <addr>" sender header; MailReplyTo (optional, e.g. a
+	// Cloudflare-routed inbox) lets replies reach a human.
+	ResendAPIKey string
+	MailFrom     string
+	MailReplyTo  string
 }
 
 // Load reads the configuration from environment variables, applying defaults
@@ -45,6 +65,9 @@ func Load() (Config, error) {
 		ClientSecret: env("FT_CLIENT_SECRET", ""),
 		RedirectURI:  env("FT_REDIRECT_URI", "http://localhost:3000/callback"),
 		Scope:        defaultScope,
+		ResendAPIKey: env("RESEND_API_KEY", ""),
+		MailFrom:     defaultMailFromName + " <" + env("MAIL_FROM_ADDRESS", defaultMailFromAddress) + ">",
+		MailReplyTo:  env("MAIL_REPLY_TO", ""),
 	}
 
 	var missing []string

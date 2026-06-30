@@ -67,8 +67,10 @@ document.addEventListener(
 					return;
 				}
 				return response.text().then(function (html) {
-					if (response.status === 401 || response.status === 422) {
-						// Server rendered the login/validation page; replace the document.
+					const contentType = response.headers.get("Content-Type") || "";
+					if (contentType.indexOf("text/html") !== -1) {
+						// Server rendered a full styled page (login, validation, rate-limit,
+						// 404…); show it in place rather than dumping its text into a popup.
 						document.documentElement.innerHTML = html;
 					} else {
 						const tmp = document.createElement("div");

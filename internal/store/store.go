@@ -65,34 +65,41 @@ func (s *Store) loadStats(ctx context.Context) error {
 // Close releases the connection pool.
 func (s *Store) Close() { s.pool.Close() }
 
+// OpenRaw creates a Store backed by the given pool but does not run migrations.
+// Use when migrations are applied once up front (e.g. in test setup).
+func OpenRaw(pool *pgxpool.Pool) *Store {
+	return &Store{pool: pool}
+}
+
 // Ping verifies the database is reachable (used by the /healthcheck endpoint).
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 // Account is an app account plus its 42 snapshot and visibility settings. The
 // password hash is never carried here; it is returned separately by AccountByEmail.
 type Account struct {
-	ID         int64
-	Email      string
-	FtID       int64
-	FtLogin    string
-	Data       map[string]json.RawMessage
-	FetchedAt  time.Time
-	IsPublic   bool            // profile viewable without an account
-	Visibility map[string]bool // per-section public overrides (missing -> code default)
+	ID            int64
+	Email         string
+	FtID          int64
+	FtLogin       string
+	Data          map[string]json.RawMessage
+	FetchedAt     time.Time
+	IsPublic      bool            // profile viewable without an account
+	Visibility    map[string]bool // per-section public overrides (missing -> code default)
+	EmailVerified bool            // email ownership confirmed via the verification link
 }
 
 // The column list shared by the account lookups, plain and table-aliased (for
 // the sessions join).
 const (
-	accountCols  = "id, email, ft_id, ft_login, data, fetched_at, is_public, visibility"
-	accountColsA = "a.id, a.email, a.ft_id, a.ft_login, a.data, a.fetched_at, a.is_public, a.visibility"
+	accountCols  = "id, email, ft_id, ft_login, data, fetched_at, is_public, visibility, email_verified"
+	accountColsA = "a.id, a.email, a.ft_id, a.ft_login, a.data, a.fetched_at, a.is_public, a.visibility, a.email_verified"
 )
 
 // scanAccount reads the accountCols (in order) from a row.
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var data, vis []byte
-	if err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis); err != nil {
+	if err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified); err != nil {
 		return Account{}, err
 	}
 	if err := json.Unmarshal(data, &a.Data); err != nil {
@@ -133,7 +140,7 @@ func (s *Store) AccountByEmail(ctx context.Context, email string) (Account, stri
 	var data, vis []byte
 	var hash string
 	err := s.pool.QueryRow(ctx, `SELECT `+accountCols+`, password_hash FROM accounts WHERE email = $1`, email).
-		Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &hash)
+		Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, "", ErrNotFound
 	}
@@ -207,6 +214,34 @@ func (s *Store) UpdateEmail(ctx context.Context, accountID int64, email string) 
 	return err
 }
 
+// SetVerifyToken stores the active token's sha256 hex (never the token itself) and
+// its issue time, marks the account unverified, and supersedes any previous token.
+// sentAt backs the link's TTL (the resend cooldown is a separate in-memory limiter).
+func (s *Store) SetVerifyToken(ctx context.Context, accountID int64, tokenHash string, sentAt time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET email_verified = false, verify_token_hash = $2, verify_sent_at = $3 WHERE id = $1`,
+		accountID, tokenHash, sentAt)
+	return err
+}
+
+// VerifyByToken consumes a verification token in one statement: it matches the row
+// by verify_token_hash within ttl, marks it verified, clears the token columns, and
+// returns the account. An unknown or expired token matches no row (ErrNotFound). The
+// single statement is what stops a token being redeemed twice by concurrent requests.
+func (s *Store) VerifyByToken(ctx context.Context, tokenHash string, ttl time.Duration) (Account, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE accounts
+		SET email_verified = true, verify_token_hash = NULL, verify_sent_at = NULL
+		WHERE verify_token_hash = $1
+		  AND verify_sent_at > now() - make_interval(secs => $2)
+		RETURNING `+accountCols, tokenHash, ttl.Seconds())
+	a, err := scanAccount(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, ErrNotFound
+	}
+	return a, err
+}
+
 // UpdatePassword changes the account's password hash.
 func (s *Store) UpdatePassword(ctx context.Context, accountID int64, passwordHash string) error {
 	_, err := s.pool.Exec(ctx,
@@ -232,6 +267,51 @@ func (s *Store) AccountPasswordHash(ctx context.Context, accountID int64) (strin
 func (s *Store) DeleteAccount(ctx context.Context, id int64) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, id)
 	return err
+}
+
+// SetDeleteToken stores the active deletion token's sha256 hex (never the token
+// itself) and its issue time, superseding any previous token. requestedAt backs
+// the link's TTL (the request cooldown is a separate in-memory limiter). It does
+// not touch the account otherwise — nothing is erased until the token is confirmed.
+func (s *Store) SetDeleteToken(ctx context.Context, accountID int64, tokenHash string, requestedAt time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET delete_token_hash = $2, delete_requested_at = $3 WHERE id = $1`,
+		accountID, tokenHash, requestedAt)
+	return err
+}
+
+// PeekDeleteToken returns the account for a live (matching, unexpired) deletion
+// token without consuming or deleting anything, so the confirmation page can be
+// rendered for a real request and the failure page for a bad one. An unknown or
+// expired token matches no row (ErrNotFound).
+func (s *Store) PeekDeleteToken(ctx context.Context, tokenHash string, ttl time.Duration) (Account, error) {
+	row := s.pool.QueryRow(ctx, `SELECT `+accountCols+`
+		FROM accounts
+		WHERE delete_token_hash = $1
+		  AND delete_requested_at > now() - make_interval(secs => $2)`, tokenHash, ttl.Seconds())
+	a, err := scanAccount(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, ErrNotFound
+	}
+	return a, err
+}
+
+// DeleteByToken consumes a deletion token in one statement: it matches the row by
+// delete_token_hash within ttl, deletes it (sessions cascade via the foreign key),
+// and returns the now-erased account. An unknown or expired token matches no row
+// (ErrNotFound). The single statement is what stops a token being redeemed twice
+// by concurrent requests.
+func (s *Store) DeleteByToken(ctx context.Context, tokenHash string, ttl time.Duration) (Account, error) {
+	row := s.pool.QueryRow(ctx, `
+		DELETE FROM accounts
+		WHERE delete_token_hash = $1
+		  AND delete_requested_at > now() - make_interval(secs => $2)
+		RETURNING `+accountCols, tokenHash, ttl.Seconds())
+	a, err := scanAccount(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, ErrNotFound
+	}
+	return a, err
 }
 
 // CreateSession persists a session id for an account with the given expiry.
@@ -333,6 +413,22 @@ func (s *Store) SyncCooldown(ctx context.Context, ftID int64, cooldown time.Dura
 		return remaining, true, last, nil
 	}
 	return 0, false, time.Time{}, nil
+}
+
+// PurgeUnverifiedAccounts deletes accounts still unverified whose last verification
+// email went out more than olderThan ago — bounding row growth and freeing the unique
+// email/42-login a never-completed signup was holding (sessions cascade via the FK).
+// Rows with a NULL verify_sent_at are left untouched: that includes pre-feature legacy
+// accounts the migration defaulted to unverified but never sent a link to, so a deploy
+// can't sweep away established users. Returns the number removed.
+func (s *Store) PurgeUnverifiedAccounts(ctx context.Context, olderThan time.Duration) (int64, error) {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM accounts WHERE NOT email_verified AND verify_sent_at < now() - make_interval(secs => $1)`,
+		olderThan.Seconds())
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // PurgeStaleCooldowns deletes sync-cooldown rows whose last sync is older than

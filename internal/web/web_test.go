@@ -570,6 +570,7 @@ func TestProfileHidesResyncDuringCooldown(t *testing.T) {
 		t.Fatalf("create account: %v", err)
 	}
 	t.Cleanup(func() { _ = st.DeleteAccount(ctx, id) })
+	markVerified(t, st, id) // owner pages are gated until the email is verified
 
 	sid := randomToken()
 	if err := st.CreateSession(ctx, sid, id, time.Now().Add(time.Hour)); err != nil {

@@ -2,6 +2,7 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
@@ -35,6 +36,22 @@ const (
 const (
 	maxLoginAttempts   = 5
 	loginAttemptWindow = 15 * time.Minute
+)
+
+// Email-verification link lifetime and the per-account resend rate limit.
+const (
+	verifyTokenTTL       = 24 * time.Hour
+	unverifiedAccountTTL = 7 * 24 * time.Hour // grace before a never-verified account is reaped
+	maxVerifyResends     = 3
+	verifyResendWindow   = 15 * time.Minute
+)
+
+// Account-deletion confirmation link lifetime and the per-account request rate
+// limit (bounds how often a session can spray deletion mail at the address).
+const (
+	deleteTokenTTL      = 24 * time.Hour
+	maxDeleteRequests   = 3
+	deleteRequestWindow = 15 * time.Minute
 )
 
 // argon2id parameters (OWASP-recommended baseline). Encoded into each hash, so
@@ -95,11 +112,20 @@ func verifyPassword(password, encoded string) bool {
 }
 
 // randomToken returns 32 bytes of crypto-random hex, used for session ids, job
-// ids and the OAuth state.
+// ids, the OAuth state, and email-verification tokens.
 func randomToken() string {
 	b := make([]byte, 32)
 	rand.Read(b) // crypto/rand.Read never returns an error (Go 1.24+)
 	return hex.EncodeToString(b)
+}
+
+// tokenHash returns the sha256 hex of a token. Verification tokens are stored
+// hashed (the plaintext only ever lives in the emailed link), so a database leak
+// can't be used to verify anyone. sha256 is fine here — the token is already
+// high-entropy, so no slow KDF is needed.
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
 }
 
 // clientKey identifies the client for the per-client sync cap: the session id
@@ -281,8 +307,11 @@ func (s *Server) clearCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, Secure: s.secure, MaxAge: -1})
 }
 
-// validEmail is a deliberately loose check: a non-empty local part, an "@", and a
-// dotted domain. Real deliverability isn't verified (no email flow in v1).
+// validEmail is a deliberately loose syntactic check: a non-empty local part, an
+// "@", and a dotted domain. Actual deliverability is confirmed out-of-band by the
+// email-verification flow (an account stays unverified until it clicks a link
+// delivered to this address), so a strict format check here would add no real
+// protection and only risk rejecting valid addresses.
 func validEmail(email string) bool {
 	at := strings.IndexByte(email, '@')
 	return at > 0 && at < len(email)-1 && strings.Contains(email[at+1:], ".")

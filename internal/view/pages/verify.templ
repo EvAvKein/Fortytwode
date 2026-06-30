@@ -1,0 +1,56 @@
+package pages
+
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
+// VerifyPending tells an authenticated-but-unverified user to check their inbox,
+// and offers a resend plus an email-correction form (for typos or legacy
+// placeholder addresses). notice carries a success message, errMsg an error.
+templ VerifyPending(email string, errMsg string, notice string, viewerLogin string) {
+	@Layout("Verify your email", viewerLogin, "") {
+		<nav class="nav">
+			<form method="post" action={ routes.APILogOut.URL() } data-method={ routes.APILogOut.MethodLower() } class="inline margin-left-auto">
+				<button type="submit" class="button">Log out</button>
+			</form>
+		</nav>
+		<main id="main" class="centered">
+			<h1>Verify your email</h1>
+			<p class="muted">
+				We sent a verification link to <strong>{ email }</strong>, open it to finish
+				setting up your account. The link is valid for 24 hours.
+			</p>
+			if notice != "" {
+				<p class="good">{ notice }</p>
+			}
+			if errMsg != "" {
+				<p class="error">{ errMsg }</p>
+			}
+			<form method="post" action={ routes.APIVerifyResend.URL() } data-method={ routes.APIVerifyResend.MethodLower() } class="form">
+				<button type="submit" class="button">Resend the email</button>
+			</form>
+			<h2>Wrong address?</h2>
+			<p class="muted">Update it and we'll send a new link.</p>
+			<form method="post" action={ routes.APIVerifyEmailEdit.URL() } data-method={ routes.APIVerifyEmailEdit.MethodLower() } class="form">
+				<label>Email <input type="email" name="email" value={ email } required/></label>
+				<button type="submit" class="button">Update &amp; resend</button>
+			</form>
+		</main>
+	}
+}
+
+// VerifyResult is shown after the verification link is opened: success, or a
+// failure (invalid/expired token) with a path back to request a new link.
+templ VerifyResult(success bool, viewerLogin string) {
+	@Layout("Email verification", viewerLogin, "") {
+		<main id="main" class="centered">
+			if success {
+				<h1>Email verified</h1>
+				<p class="good">Your email is confirmed — your account is ready.</p>
+				<a class="button" href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
+			} else {
+				<h1>Link invalid or expired</h1>
+				<p class="error">This verification link is no longer valid. Log in to request a fresh one.</p>
+				<a class="button" href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
+			}
+		</main>
+	}
+}

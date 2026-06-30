@@ -16,6 +16,7 @@ import (
 
 	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/config"
+	"github.com/EvAvKein/Fortytwode/internal/email"
 	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/store"
 	"github.com/a-h/templ"
@@ -30,6 +31,9 @@ type Server struct {
 	secure           bool // mark cookies Secure (set when the redirect URI is https)
 	passwordAttempts *attemptLimiter[int64]
 	loginAttempts    *attemptLimiter[string]
+	verifyResends    *attemptLimiter[int64] // per-account verification-email resend cap
+	deleteRequests   *attemptLimiter[int64] // per-account deletion-confirmation request cap
+	email            email.Sender           // transactional email (verification + deletion links)
 }
 
 // Serve starts the web app, reading PORT (default 4242).
@@ -42,12 +46,16 @@ func Serve(cfg config.Config, st *store.Store) error {
 		secure:           strings.HasPrefix(cfg.RedirectURI, "https://"),
 		passwordAttempts: newAttemptLimiter[int64](maxPasswordAttempts, passwordAttemptWindow),
 		loginAttempts:    newAttemptLimiter[string](maxLoginAttempts, loginAttemptWindow),
+		verifyResends:    newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
+		deleteRequests:   newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
+		email:            email.New(cfg),
 	}
 
-	// Periodically purge stale sync-cooldown rows and expired sessions
-	// (data-minimisation retention): cooldowns only matter inside their window
-	// (this also clears rows from anonymous syncs that never became accounts),
-	// and expired sessions are already invisible to lookups.
+	// Periodically purge stale sync-cooldown rows, expired sessions, and accounts
+	// that were never verified within the grace window (data-minimisation retention):
+	// cooldowns only matter inside their window (this also clears rows from anonymous
+	// syncs that never became accounts), expired sessions are already invisible to
+	// lookups, and reaping never-verified accounts frees the email/42-login they held.
 	go func() {
 		for range time.Tick(30 * time.Minute) {
 			if _, err := st.PurgeStaleCooldowns(context.Background(), syncCooldown); err != nil {
@@ -56,8 +64,13 @@ func Serve(cfg config.Config, st *store.Store) error {
 			if _, err := st.PurgeExpiredSessions(context.Background()); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: purge sessions: %v\n", err)
 			}
+			if _, err := st.PurgeUnverifiedAccounts(context.Background(), unverifiedAccountTTL); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: purge unverified accounts: %v\n", err)
+			}
 			s.loginAttempts.prune()
 			s.passwordAttempts.prune()
+			s.verifyResends.prune()
+			s.deleteRequests.prune()
 		}
 	}()
 
@@ -97,7 +110,10 @@ func (server *Server) routes() http.Handler {
 	api.HandleFunc(routes.APIAccountVisibility.Pattern(), server.handleSettings)
 	api.HandleFunc(routes.APIAccountEmail.Pattern(), server.handleSettingsEmail)
 	api.HandleFunc(routes.APIAccountPassword.Pattern(), server.handleSettingsPassword)
-	api.HandleFunc(routes.APIAccountDelete.Pattern(), server.handleDeleteAccount)
+	api.HandleFunc(routes.APIAccountDelete.Pattern(), server.handleRequestDelete)
+	api.HandleFunc(routes.APIAccountDeleteConfirm.Pattern(), server.handleConfirmDelete)
+	api.HandleFunc(routes.APIVerifyResend.Pattern(), server.handleVerifyResend)
+	api.HandleFunc(routes.APIVerifyEmailEdit.Pattern(), server.handleVerifyEmailChange)
 
 	// Pages are top-level HTML GETs. The trailing method-less "/" is the
 	// catch-all that renders the styled 404 for any unmatched path.
@@ -108,6 +124,9 @@ func (server *Server) routes() http.Handler {
 	pages.HandleFunc("GET "+routes.PageSignup, server.handleSignupForm)
 	pages.HandleFunc("GET "+routes.PageLogin, server.handleLoginForm)
 	pages.HandleFunc("GET "+routes.PageSettings, server.handleSettingsForm)
+	pages.HandleFunc("GET "+routes.PageVerifyPending, server.handleVerifyPending)
+	pages.HandleFunc("GET "+routes.PageVerifyEmail, server.handleVerifyEmail)
+	pages.HandleFunc("GET "+routes.PageConfirmDelete, server.handleDeletePending)
 	pages.HandleFunc("GET "+routes.PagePrivacy, server.handlePrivacy)
 	pages.HandleFunc("GET "+routes.PageProfile("{login}"), server.handleProfile)
 	registerAssets(pages) // fingerprinted /static/* stylesheet + scripts

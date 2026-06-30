@@ -138,8 +138,9 @@ type SettingsData struct {
 	LastSynced    string // formatted "Synced: ..." timestamp
 	CanResync     bool   // true when the owner's cooldown has expired
 	Email         string
-	EmailError    string
-	EmailSaved    bool
-	PasswordError string
-	PasswordSaved bool
+	EmailError       string
+	EmailSaved       bool
+	PasswordError    string
+	PasswordSaved    bool
+	DeletionRequested bool
 }

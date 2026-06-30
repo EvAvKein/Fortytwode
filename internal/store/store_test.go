@@ -120,6 +120,138 @@ func TestAccountsAndSessions(t *testing.T) {
 	})
 }
 
+func TestEmailVerification(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+	u := uniqueID()
+	id, err := st.CreateAccount(ctx, fmt.Sprintf("verify-%d@e.st", u), "h", u,
+		fmt.Sprintf("verifier%d", u), map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t.Cleanup(func() { st.DeleteAccount(ctx, id) })
+
+	// Fresh accounts start unverified (the migration default).
+	if acc, _ := st.AccountByFtID(ctx, u); acc.EmailVerified {
+		t.Fatal("a new account should be unverified")
+	}
+
+	const (
+		tok = "token-hash-abc123" // the store treats this as opaque; hashing is the web layer's job
+		ttl = 24 * time.Hour
+	)
+
+	t.Run("HappyPath", func(t *testing.T) {
+		if err := st.SetVerifyToken(ctx, id, tok, time.Now()); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		acc, err := st.VerifyByToken(ctx, tok, ttl)
+		if err != nil || acc.ID != id || !acc.EmailVerified {
+			t.Fatalf("verify: acc=%+v err=%v, want id=%d verified", acc, err, id)
+		}
+		// Persisted as verified, and the token is consumed (a replay fails).
+		if a, _ := st.AccountByFtID(ctx, u); !a.EmailVerified {
+			t.Error("verification not persisted")
+		}
+		if _, err := st.VerifyByToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("token replay: got %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("Expired", func(t *testing.T) {
+		// Re-issue with a send time older than the TTL; the token must not verify.
+		if err := st.SetVerifyToken(ctx, id, tok, time.Now().Add(-25*time.Hour)); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		if _, err := st.VerifyByToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired token: got %v, want ErrNotFound", err)
+		}
+		// SetVerifyToken also reset the flag back to unverified.
+		if a, _ := st.AccountByFtID(ctx, u); a.EmailVerified {
+			t.Error("issuing a new token should reset email_verified to false")
+		}
+	})
+
+	t.Run("Unknown", func(t *testing.T) {
+		if _, err := st.VerifyByToken(ctx, "no-such-token", ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("unknown token: got %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func TestDeletionConfirmation(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+
+	const (
+		tok = "delete-token-hash-abc123" // opaque to the store; hashing is the web layer's job
+		ttl = 24 * time.Hour
+	)
+
+	newAcct := func() (int64, string) {
+		u := uniqueID()
+		login := fmt.Sprintf("deltok%d", u)
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("deltok-%d@e.st", u), "h", u, login,
+			map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { st.DeleteAccount(ctx, id) })
+		return id, login
+	}
+
+	t.Run("HappyPath", func(t *testing.T) {
+		id, login := newAcct()
+		if err := st.SetDeleteToken(ctx, id, tok, time.Now()); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		// Peek validates without consuming: the account survives.
+		if acc, err := st.PeekDeleteToken(ctx, tok, ttl); err != nil || acc.ID != id {
+			t.Fatalf("peek: acc=%+v err=%v, want id=%d", acc, err, id)
+		}
+		if _, err := st.AccountByLogin(ctx, login); err != nil {
+			t.Fatalf("peek must not delete the account: %v", err)
+		}
+		// Confirm consumes the token and erases the account.
+		acc, err := st.DeleteByToken(ctx, tok, ttl)
+		if err != nil || acc.ID != id {
+			t.Fatalf("delete: acc=%+v err=%v, want id=%d", acc, err, id)
+		}
+		if _, err := st.AccountByLogin(ctx, login); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("account after delete: got %v, want ErrNotFound", err)
+		}
+		// Replay fails: the token is gone with the row.
+		if _, err := st.DeleteByToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("token replay: got %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("Expired", func(t *testing.T) {
+		id, login := newAcct()
+		if err := st.SetDeleteToken(ctx, id, tok, time.Now().Add(-25*time.Hour)); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		if _, err := st.PeekDeleteToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired peek: got %v, want ErrNotFound", err)
+		}
+		if _, err := st.DeleteByToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired delete: got %v, want ErrNotFound", err)
+		}
+		// The account is untouched by an expired token.
+		if _, err := st.AccountByLogin(ctx, login); err != nil {
+			t.Errorf("expired token must not delete the account: %v", err)
+		}
+	})
+
+	t.Run("Unknown", func(t *testing.T) {
+		if _, err := st.DeleteByToken(ctx, "no-such-token", ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("unknown token: got %v, want ErrNotFound", err)
+		}
+	})
+}
+
 func TestReserveSync(t *testing.T) {
 	t.Parallel()
 	st := storetest.OpenStore(t)
@@ -244,6 +376,62 @@ func TestPurgeExpiredSessions(t *testing.T) {
 	// ...and the live one survives.
 	if got, err := st.SessionAccount(ctx, live); err != nil || got.ID != id {
 		t.Errorf("live session after purge: %+v %v", got, err)
+	}
+}
+
+func TestPurgeUnverifiedAccounts(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+
+	// create makes a fresh (unverified, NULL verify_sent_at) account and returns its
+	// id and ft_id.
+	create := func() (int64, int64) {
+		u := uniqueID()
+		login := fmt.Sprintf("reap%d", u)
+		data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("reap-%d@e.st", u), "h", u, login, data)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { st.DeleteAccount(ctx, id) }) // no-op if already reaped
+		return id, u
+	}
+
+	staleID, staleFt := create()
+	verifiedID, verifiedFt := create()
+	recentID, recentFt := create()
+	_, legacyFt := create() // plain create: verify_sent_at stays NULL
+
+	// stale: unverified, last link older than the grace window -> reaped.
+	if err := st.SetVerifyToken(ctx, staleID, "h-stale", time.Now().Add(-8*24*time.Hour)); err != nil {
+		t.Fatalf("set stale token: %v", err)
+	}
+	// verified: consumes its token, so email_verified=true and verify_sent_at NULLed -> survives.
+	if err := st.SetVerifyToken(ctx, verifiedID, "h-verified", time.Now()); err != nil {
+		t.Fatalf("set verified token: %v", err)
+	}
+	if _, err := st.VerifyByToken(ctx, "h-verified", 24*time.Hour); err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	// recent: unverified but inside the grace window -> survives.
+	if err := st.SetVerifyToken(ctx, recentID, "h-recent", time.Now()); err != nil {
+		t.Fatalf("set recent token: %v", err)
+	}
+
+	n, err := st.PurgeUnverifiedAccounts(ctx, 7*24*time.Hour)
+	if err != nil || n < 1 {
+		t.Fatalf("purge: n=%d err=%v, want >=1/nil", n, err)
+	}
+
+	// Only the stale account is gone; verified, recent, and legacy-NULL survive.
+	if _, err := st.AccountByFtID(ctx, staleFt); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("stale unverified account: err=%v, want ErrNotFound (reaped)", err)
+	}
+	for name, ft := range map[string]int64{"verified": verifiedFt, "recent": recentFt, "legacy-null": legacyFt} {
+		if _, err := st.AccountByFtID(ctx, ft); err != nil {
+			t.Errorf("%s account should survive the purge: err=%v", name, err)
+		}
 	}
 }
 

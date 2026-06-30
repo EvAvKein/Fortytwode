@@ -296,7 +296,14 @@ func (s *Server) handleSyncSignin(w http.ResponseWriter, r *http.Request) {
 	}
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
-	http.Redirect(w, r, routes.PageProfile(login), http.StatusFound)
+	// The just-set session cookie isn't on this request yet, so resolve the account
+	// via a direct lookup rather than currentAccount; an unverified (e.g. legacy)
+	// account signing in this way is still boxed into the pending page.
+	dest := routes.PageProfile(login)
+	if acc, err := s.store.AccountByLogin(r.Context(), login); err == nil {
+		dest = destAfterAuth(acc)
+	}
+	http.Redirect(w, r, dest, http.StatusFound)
 }
 
 // handleStream streams the current job's progress as Server-Sent Events.
@@ -371,6 +378,9 @@ func (s *Server) handleDownloadSaved(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+		return
+	}
+	if s.gateUnverified(w, r, acc) {
 		return
 	}
 	go s.store.IncrementDownloads()
@@ -464,11 +474,15 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	go s.store.IncrementProfiles()
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
+	// Start a session so the pending page can identify the account (resend /
+	// correct-email), but the verified-gate keeps it boxed there until the link is
+	// clicked. The verification email is issued before the redirect.
 	if err := s.startSession(w, r, id); err != nil {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, routes.PageProfile(ftLogin), http.StatusFound)
+	s.issueVerification(r.Context(), id, email)
+	http.Redirect(w, r, routes.PageVerifyPending, http.StatusFound)
 }
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
@@ -499,7 +513,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, routes.PageProfile(acc.FtLogin), http.StatusFound)
+	http.Redirect(w, r, destAfterAuth(acc), http.StatusFound)
 }
 
 // handleLoginFlow completes a 42 OAuth login: it calls /v2/me to identify the
@@ -533,30 +547,11 @@ func (s *Server) handleLoginFlow(w http.ResponseWriter, r *http.Request, token s
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, routes.PageProfile(acc.FtLogin), http.StatusFound)
+	http.Redirect(w, r, destAfterAuth(acc), http.StatusFound)
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
-		return
-	}
-	s.endSession(w, r)
-	http.Redirect(w, r, routes.PageHome, http.StatusSeeOther)
-}
-
-// handleDeleteAccount erases the logged-in account and everything tied to it (GDPR
-// Art. 17), ends the session, and returns home.
-func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
-	if s.rejectCrossSite(w, r) {
-		return
-	}
-	acc, ok := s.currentAccount(r)
-	if !ok {
-		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
-		return
-	}
-	if err := s.store.DeleteAccount(r.Context(), acc.ID); err != nil {
-		http.Error(w, "Could not delete account", http.StatusInternalServerError)
 		return
 	}
 	s.endSession(w, r)
@@ -580,6 +575,10 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	owner := loggedIn && viewer.ID == acc.ID
+	if owner && !viewer.EmailVerified {
+		http.Redirect(w, r, routes.PageVerifyPending, http.StatusFound)
+		return
+	}
 	if !owner && !loggedIn && !acc.IsPublic {
 		renderStatus(w, r, http.StatusNotFound, pages.ProfileUnavailable(s.viewerLogin(r)))
 		return
@@ -603,13 +602,21 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, routes.PageLogin, http.StatusFound)
 		return
 	}
-	render(w, r, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
+	if s.gateUnverified(w, r, acc) {
+		return
+	}
+	d := s.settingsData(r.Context(), acc, false)
+	d.DeletionRequested = r.URL.Query().Get("deletion") == "requested"
+	render(w, r, pages.Settings(d, acc.FtLogin))
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+		return
+	}
+	if s.gateUnverified(w, r, acc) {
 		return
 	}
 	if s.rejectCrossSite(w, r) {
@@ -653,6 +660,9 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+		return
+	}
+	if s.gateUnverified(w, r, acc) {
 		return
 	}
 	if s.rejectCrossSite(w, r) {
@@ -701,11 +711,6 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc.Email = newEmail
-	d = s.settingsData(r.Context(), acc, false)
-	d.Email = newEmail
-	d.EmailSaved = true
-
 	oldSID, ok := s.currentSessionID(r)
 	if ok {
 		newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
@@ -716,7 +721,12 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	render(w, r, pages.Settings(d, acc.FtLogin))
+	// Changing the email un-verifies the account: issueVerification marks it
+	// unverified and sends a link to the new address, and the pending page boxes the
+	// session there until the new address is confirmed (mirrors signup). Without
+	// this the account would keep a "verified" flag against an unproven address.
+	s.issueVerification(r.Context(), acc.ID, newEmail)
+	http.Redirect(w, r, routes.PageVerifyPending, http.StatusFound)
 }
 
 // handleSettingsPassword updates the account's password after verifying the
@@ -726,6 +736,9 @@ func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) 
 	acc, ok := s.currentAccount(r)
 	if !ok {
 		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+		return
+	}
+	if s.gateUnverified(w, r, acc) {
 		return
 	}
 	if s.rejectCrossSite(w, r) {

@@ -1,0 +1,56 @@
+package pages
+
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
+// DeleteRequested tells the user a confirmation link has been emailed and that
+// nothing is deleted yet. errMsg carries a problem (e.g. the request rate limit).
+templ DeleteRequested(email string, errMsg string, viewerLogin string) {
+	@Layout("Confirm account deletion", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Confirm your account deletion</h1>
+			<p class="muted">
+				We sent a confirmation link to <strong>{ email }</strong>. Open it to permanently
+				delete your account and the stored 42 snapshot. The link is valid for 24 hours.
+			</p>
+			<p class="muted"><strong>Your account hasn't been deleted yet.</strong></p>
+			if errMsg != "" {
+				<p class="error">{ errMsg }</p>
+			}
+			<a class="button" href={ templ.SafeURL(routes.PageSettings) }>Back to settings</a>
+		</main>
+	}
+}
+
+// DeleteConfirm is reached from the deletion email. Its button POSTs the token to
+// the confirm endpoint: the GET that renders this page erases nothing, so a link
+// prefetch can't delete the account.
+templ DeleteConfirm(token string, viewerLogin string) {
+	@Layout("Confirm account deletion", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Delete your account?</h1>
+			<p class="muted">
+				This permanently erases your account and the stored 42 snapshot.
+				<br/>
+				This can't be undone.
+			</p>
+			<form method="post" action={ routes.APIAccountDeleteConfirm.URL() } class="form">
+				<input type="hidden" name="token" value={ token }/>
+				<button type="submit" class="button danger">Confirm deletion</button>
+			</form>
+			<a class="button" href={ templ.SafeURL(routes.PageSettings) }>Cancel</a>
+		</main>
+	}
+}
+
+// DeleteFailed is shown when a deletion-confirmation link is invalid, expired, or
+// already consumed. Success (a valid token) deletes the account and redirects home,
+// so this template only covers the failure path.
+templ DeleteFailed(viewerLogin string) {
+	@Layout("Account deletion", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Link invalid or expired</h1>
+			<p class="error">This deletion link is no longer valid. Open settings to request a fresh one.</p>
+			<a class="button" href={ templ.SafeURL(routes.PageSettings) }>Settings</a>
+		</main>
+	}
+}
