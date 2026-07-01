@@ -39,12 +39,13 @@ var (
 	APISyncDownloadCurated  = Route{Method: "GET", Path: "/sync/download/curated"}
 	APILogInSync            = Route{Method: "POST", Path: "/session/sync"}
 	APILogIn                = Route{Method: "POST", Path: "/session"}
+	APILogInConsume         = Route{Method: "POST", Path: "/session/consume"}
 	APILogOut               = Route{Method: "DELETE", Path: "/session"}
 	APIAccountCreate        = Route{Method: "POST", Path: "/account"}
 	APIAccountDownload      = Route{Method: "GET", Path: "/account/download"}
 	APIAccountVisibility    = Route{Method: "PATCH", Path: "/account/visibility"}
 	APIAccountEmail         = Route{Method: "PATCH", Path: "/account/email"}
-	APIAccountPassword      = Route{Method: "PATCH", Path: "/account/password"}
+	APIAccountEmailConfirm  = Route{Method: "POST", Path: "/account/email/confirm"}
 	APIAccountDelete        = Route{Method: "DELETE", Path: "/account"}
 	APIAccountDeleteConfirm = Route{Method: "POST", Path: "/account/delete/confirm"}
 	APIVerifyResend         = Route{Method: "POST", Path: "/account/verify/resend"}

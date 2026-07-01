@@ -22,7 +22,6 @@ templ SignupForm(errMsg string, expired bool, viewerLogin string) {
 				}
 				<form method={ routes.APIAccountCreate.MethodLower() } action={ routes.APIAccountCreate.URL() } class="form">
 					<label>Email <input type="email" name="email" required/></label>
-					<label>Password (min 8) <input type="password" name="password" minlength="8" required/></label>
 					<button type="submit" class="button">Sign up</button>
 				</form>
 				<p class="muted"><a href={ templ.SafeURL(routes.PageLogin) }>Log in</a></p>

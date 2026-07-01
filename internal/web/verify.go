@@ -25,9 +25,10 @@ func (s *Server) originBase() string {
 	return ""
 }
 
-// verifyLink builds the absolute verification URL for a token.
-func (s *Server) verifyLink(token string) string {
-	return s.originBase() + routes.PageVerifyEmail + "?token=" + url.QueryEscape(token)
+// actionLink builds the absolute URL an emailed link (verify, login, email-change)
+// points at: the public origin, the page path, and the ?token= query.
+func (s *Server) actionLink(page, token string) string {
+	return s.originBase() + page + "?token=" + url.QueryEscape(token)
 }
 
 // issueVerification mints a fresh token, persists its hash and the send time, and
@@ -39,12 +40,50 @@ func (s *Server) issueVerification(ctx context.Context, accountID int64, email s
 		fmt.Fprintf(os.Stderr, "warning: set verify token for account %d: %v\n", accountID, err)
 		return
 	}
-	link := s.verifyLink(token)
+	link := s.actionLink(routes.PageVerifyEmail, token)
 	go func() {
 		if err := s.email.SendVerification(context.Background(), email, link); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: send verification email for account %d: %v\n", accountID, err)
 		}
 	}()
+}
+
+// issueLoginLink mints and mails a magic-link login token (mirrors issueVerification;
+// a dropped send is logged, not surfaced — the login form can be re-submitted).
+func (s *Server) issueLoginLink(ctx context.Context, accountID int64, email string) {
+	token := randomToken()
+	if err := s.store.SetLoginToken(ctx, accountID, tokenHash(token), time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: set login token for account %d: %v\n", accountID, err)
+		return
+	}
+	link := s.actionLink(routes.PageLoginCallback, token)
+	go func() {
+		if err := s.email.SendLogin(context.Background(), email, link); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: send login email for account %d: %v\n", accountID, err)
+		}
+	}()
+}
+
+// issueEmailChange parks the requested new address with a fresh confirmation token and
+// mails the link there; the account's real email switches only once it's consumed.
+func (s *Server) issueEmailChange(ctx context.Context, accountID int64, newEmail string) {
+	token := randomToken()
+	if err := s.store.SetEmailChange(ctx, accountID, newEmail, tokenHash(token), time.Now()); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: set email-change token for account %d: %v\n", accountID, err)
+		return
+	}
+	link := s.actionLink(routes.PageConfirmEmail, token)
+	go func() {
+		if err := s.email.SendEmailChange(context.Background(), newEmail, link); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: send email-change email for account %d: %v\n", accountID, err)
+		}
+	}()
+}
+
+// badLink renders the shared "this link is invalid or expired" failure page (400),
+// used by every emailed-link handler (verify, login, email-change).
+func (s *Server) badLink(w http.ResponseWriter, r *http.Request) {
+	renderStatus(w, r, http.StatusBadRequest, pages.VerifyResult(false, s.viewerLogin(r)))
 }
 
 // gateUnverified redirects an authenticated-but-unverified account to the pending
@@ -122,12 +161,12 @@ func (s *Server) handleVerifyPending(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		renderStatus(w, r, http.StatusBadRequest, pages.VerifyResult(false, s.viewerLogin(r)))
+		s.badLink(w, r)
 		return
 	}
 	acc, err := s.store.VerifyByToken(r.Context(), tokenHash(token), verifyTokenTTL)
 	if errors.Is(err, store.ErrNotFound) {
-		renderStatus(w, r, http.StatusBadRequest, pages.VerifyResult(false, s.viewerLogin(r)))
+		s.badLink(w, r)
 		return
 	}
 	if err != nil {

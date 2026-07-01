@@ -19,7 +19,8 @@ func OpenStore(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()
 
-	// Run migrations exactly once across all parallel tests.
+	// Migrate once per test binary; across binaries (go test runs packages in parallel
+	// processes) concurrent migrators are serialized by the advisory lock in Store.Migrate.
 	migrateOnce.Do(func() {
 		st, err := store.Open(ctx, os.Getenv("DATABASE_URL"))
 		if err != nil {

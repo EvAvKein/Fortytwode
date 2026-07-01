@@ -3,10 +3,7 @@ package web
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -14,7 +11,6 @@ import (
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/store"
-	"golang.org/x/crypto/argon2"
 )
 
 // Cookie names and the session lifetime.
@@ -26,16 +22,25 @@ const (
 	sessionTTL    = 30 * 24 * time.Hour
 )
 
-// Per-account failed-password rate limit for sensitive settings changes.
+// Per-email magic-link send rate limit (bounds how often a login link can be
+// mailed to one address, whether or not an account exists for it).
 const (
-	maxPasswordAttempts   = 5
-	passwordAttemptWindow = 15 * time.Minute
+	maxLoginAttempts   = 2
+	loginAttemptWindow = 30 * time.Minute
 )
 
-// Per-email failed-login rate limit.
+// Magic-link login and email-change confirmation link lifetimes. Login links are
+// short-lived; the email-change link matches the verification TTL.
 const (
-	maxLoginAttempts   = 5
-	loginAttemptWindow = 15 * time.Minute
+	loginTokenTTL       = 1 * time.Hour
+	emailChangeTokenTTL = 24 * time.Hour
+)
+
+// Per-account email-change request cap (bounds how often a session can spray
+// confirmation mail at arbitrary new addresses).
+const (
+	maxEmailChangeRequests   = 2
+	emailChangeRequestWindow = 30 * time.Minute
 )
 
 // Email-verification link lifetime and the per-account resend rate limit.
@@ -54,65 +59,8 @@ const (
 	deleteRequestWindow = 15 * time.Minute
 )
 
-// argon2id parameters (OWASP-recommended baseline). Encoded into each hash, so
-// they can be tuned later without breaking existing hashes.
-const (
-	argonTime    = 1
-	argonMemory  = 64 * 1024 // KiB
-	argonThreads = 4
-	argonKeyLen  = 32
-	argonSaltLen = 16
-)
-
-// dummyHash is verified against when a login's email matches no account, so the
-// not-found path costs the same argon2 derivation as a real one — otherwise the
-// response time would reveal which emails have accounts.
-var dummyHash, _ = hashPassword("dummy-timing-equalizer")
-
-// hashPassword returns a PHC-format argon2id string ($argon2id$v=..$m=..,t=..,p=..$salt$hash).
-func hashPassword(password string) (string, error) {
-	salt := make([]byte, argonSaltLen)
-	if _, err := rand.Read(salt); err != nil {
-		return "", err
-	}
-	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
-	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
-		argon2.Version, argonMemory, argonTime, argonThreads,
-		base64.RawStdEncoding.EncodeToString(salt),
-		base64.RawStdEncoding.EncodeToString(key)), nil
-}
-
-// verifyPassword reports whether password matches a PHC-format argon2id hash,
-// re-deriving with the parameters embedded in the hash.
-func verifyPassword(password, encoded string) bool {
-	parts := strings.Split(encoded, "$")
-	// ["", "argon2id", "v=19", "m=..,t=..,p=..", salt, hash]
-	if len(parts) != 6 || parts[1] != "argon2id" {
-		return false
-	}
-	var version int
-	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version {
-		return false
-	}
-	var m, t uint32
-	var p uint8
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &m, &t, &p); err != nil {
-		return false
-	}
-	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
-	}
-	want, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
-		return false
-	}
-	got := argon2.IDKey([]byte(password), salt, t, m, p, uint32(len(want)))
-	return subtle.ConstantTimeCompare(got, want) == 1
-}
-
 // randomToken returns 32 bytes of crypto-random hex, used for session ids, job
-// ids, the OAuth state, and email-verification tokens.
+// ids, the OAuth state, and the email login/verification tokens.
 func randomToken() string {
 	b := make([]byte, 32)
 	rand.Read(b) // crypto/rand.Read never returns an error (Go 1.24+)

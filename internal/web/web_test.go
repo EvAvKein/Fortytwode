@@ -17,36 +17,6 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/view"
 )
 
-func TestHashVerify(t *testing.T) {
-	t.Parallel()
-	hash, err := hashPassword("correct horse battery staple")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !verifyPassword("correct horse battery staple", hash) {
-		t.Error("correct password rejected")
-	}
-	if verifyPassword("wrong", hash) {
-		t.Error("wrong password accepted")
-	}
-	if verifyPassword("correct horse battery staple", hash+"x") {
-		t.Error("tampered hash accepted")
-	}
-}
-
-func TestDummyHashUsable(t *testing.T) {
-	t.Parallel()
-	// handleLogin verifies against dummyHash when an email matches no account; a
-	// blank value (hashPassword failing at init) would skip the argon2 work and
-	// reopen the timing oracle.
-	if dummyHash == "" {
-		t.Fatal("dummyHash is empty")
-	}
-	if verifyPassword("anything", dummyHash) {
-		t.Error("dummyHash should not verify arbitrary passwords")
-	}
-}
-
 func TestClientKey(t *testing.T) {
 	t.Parallel()
 	s := &Server{}
@@ -565,7 +535,7 @@ func TestProfileHidesResyncDuringCooldown(t *testing.T) {
 	data := map[string]json.RawMessage{
 		"me": json.RawMessage(`{"login":"` + login + `"}`),
 	}
-	id, err := st.CreateAccount(ctx, email, "hash$value", ftID, login, data)
+	id, err := st.CreateAccount(ctx, email, ftID, login, data)
 	if err != nil {
 		t.Fatalf("create account: %v", err)
 	}
@@ -610,4 +580,23 @@ func TestProfileHidesResyncDuringCooldown(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "Re-sync") {
 		t.Errorf("profile during cooldown should not contain Re-sync link")
 	}
+}
+
+// postMultipart builds a multipart/form-data request, matching how the browser
+// submits data-method forms via fetch(new FormData(form)) — as opposed to
+// postForm's urlencoded body. Handlers that only ParseForm (not ParseMultipartForm)
+// see empty fields for these, so the distinction matters in tests.
+func postMultipart(method, route string, cookie *http.Cookie, fields map[string]string) (*httptest.ResponseRecorder, *http.Request) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		_ = writer.WriteField(k, v)
+	}
+	_ = writer.Close()
+	r := httptest.NewRequest(method, route, &buf)
+	r.Header.Set("Content-Type", writer.FormDataContentType())
+	if cookie != nil {
+		r.AddCookie(cookie)
+	}
+	return httptest.NewRecorder(), r
 }

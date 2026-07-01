@@ -3,7 +3,6 @@
 CREATE TABLE accounts (
     id SERIAL PRIMARY KEY,
     email text NOT NULL UNIQUE,
-    password_hash text NOT NULL,
     ft_id bigint NOT NULL UNIQUE,
     ft_login text NOT NULL UNIQUE,
     data jsonb NOT NULL,
@@ -11,28 +10,38 @@ CREATE TABLE accounts (
     is_public boolean DEFAULT false NOT NULL,
     visibility jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    email_verified boolean DEFAULT false NOT NULL,
+    verify_token_hash text,
+    verify_sent_at timestamp with time zone,
+    delete_token_hash text,
+    delete_requested_at timestamp with time zone,
+    login_token_hash text,
+    login_sent_at timestamp with time zone,
+    pending_email text,
+    email_change_token_hash text,
+    email_change_sent_at timestamp with time zone
 );
 
 CREATE TABLE schema_migrations (
     version integer PRIMARY KEY,
     name text NOT NULL,
     body text NOT NULL,
-    applied_at timestamp with time zone DEFAULT now() NOT NULL,
+    applied_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 CREATE TABLE sessions (
     id text PRIMARY KEY,
     account_id bigint NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    expires_at timestamp with time zone NOT NULL,
+    expires_at timestamp with time zone NOT NULL
 );
 
 CREATE TABLE stats (
     id integer DEFAULT 1 PRIMARY KEY,
     downloads bigint DEFAULT 0 NOT NULL,
-    profiles bigint DEFAULT 0 NOT NULL,
+    profiles bigint DEFAULT 0 NOT NULL
 );
 
 CREATE TABLE sync_cooldowns (
     ft_id bigint PRIMARY KEY,
-    last_sync_at timestamp with time zone NOT NULL,
+    last_sync_at timestamp with time zone NOT NULL
 );

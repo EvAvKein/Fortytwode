@@ -442,9 +442,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.TrimSpace(r.FormValue("email"))
-	password := r.FormValue("password")
-	if !validEmail(email) || len(password) < 8 {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Enter a valid email and a password of at least 8 characters", false, ""))
+	if !validEmail(email) {
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Enter a valid email address", false, ""))
 		return
 	}
 	jobID, j, ok := s.jobFor(r)
@@ -457,12 +456,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your sync hasn't finished yet, wait for it to complete", false, ""))
 		return
 	}
-	hash, err := hashPassword(password)
-	if err != nil {
-		http.Error(w, "could not hash password", http.StatusInternalServerError)
-		return
-	}
-	id, err := s.store.CreateAccount(r.Context(), email, hash, ftID, ftLogin, snap)
+	id, err := s.store.CreateAccount(r.Context(), email, ftID, ftLogin, snap)
 	if errors.Is(err, store.ErrDuplicate) {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("This email or 42 profile already has an account, try logging in", false, ""))
 		return
@@ -489,26 +483,82 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	render(w, r, pages.LoginForm("", ""))
 }
 
+// handleLogin requests a magic-link login: it mails a one-time link if an account
+// exists for the address, then renders the same LoginLinkSent page either way (see
+// that template for why the response must not reveal whether the address is
+// registered). The per-email cap bounds how often a link can be sprayed at one address.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
 	email := strings.TrimSpace(r.FormValue("email"))
-	password := r.FormValue("password")
+	if !validEmail(email) {
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.LoginForm("Enter a valid email address.", ""))
+		return
+	}
+	// The cap is keyed on the submitted address and checked in-memory before any DB
+	// work, so telling the user they're over it reveals nothing about whether an account
+	// exists — only that this address has requested too many links recently.
 	if !s.loginAttempts.allowed(email) {
-		renderStatus(w, r, http.StatusTooManyRequests, pages.LoginForm("Too many login attempts, try again later", ""))
+		renderStatus(w, r, http.StatusTooManyRequests,
+			pages.LoginForm("Too many login link requests — wait a little before trying again.", ""))
 		return
 	}
-	acc, hash, err := s.store.AccountByEmail(r.Context(), email)
+	s.loginAttempts.recordFailed(email)
+	// Respond before any DB work, then look up and mail on a background context, so the
+	// response time doesn't depend on whether the address is registered (which would
+	// otherwise reveal whether an account exists).
+	render(w, r, pages.LoginLinkSent(email, s.viewerLogin(r)))
+	go func() {
+		if acc, err := s.store.AccountByEmail(context.Background(), email); err == nil {
+			s.issueLoginLink(context.Background(), acc.ID, acc.Email)
+		}
+	}()
+}
+
+// handleLoginCallback is the GET the magic-link email points at. It only peeks the
+// token and renders a confirm interstitial — consuming nothing, so a link prefetch
+// (mail scanner, preview bot) can't spend the one-time token, and the session start
+// stays off this cross-site-triggerable GET (that's what defeats login CSRF). The
+// interstitial's button POSTs to handleLoginConsume, which is where login happens.
+func (s *Server) handleLoginCallback(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		s.badLink(w, r)
+		return
+	}
+	if _, err := s.store.PeekLoginToken(r.Context(), tokenHash(token), loginTokenTTL); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.badLink(w, r)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, pages.LoginConfirm(token, s.viewerLogin(r)))
+}
+
+// handleLoginConsume redeems the token from the confirm interstitial's POST (see
+// handleLoginCallback for why login is a POST, not the GET). A valid, unexpired token
+// starts a session and lands on the profile; anything else renders the failure page.
+func (s *Server) handleLoginConsume(w http.ResponseWriter, r *http.Request) {
+	if s.rejectCrossSite(w, r) {
+		return
+	}
+	token := r.FormValue("token")
+	if token == "" {
+		s.badLink(w, r)
+		return
+	}
+	acc, err := s.store.ConsumeLoginToken(r.Context(), tokenHash(token), loginTokenTTL)
+	if errors.Is(err, store.ErrNotFound) {
+		s.badLink(w, r)
+		return
+	}
 	if err != nil {
-		hash = dummyHash // burn the same argon2 time so a missing email isn't a timing oracle
-	}
-	if err != nil || !verifyPassword(password, hash) {
-		s.loginAttempts.recordFailed(email)
-		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Invalid email or password.", ""))
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	s.loginAttempts.clear(email)
 	if err := s.startSession(w, r, acc.ID); err != nil {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
@@ -607,6 +657,7 @@ func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
 	}
 	d := s.settingsData(r.Context(), acc, false)
 	d.DeletionRequested = r.URL.Query().Get("deletion") == "requested"
+	d.EmailPending = r.URL.Query().Get("email_pending")
 	render(w, r, pages.Settings(d, acc.FtLogin))
 }
 
@@ -653,9 +704,10 @@ func parseVisibilityForm(r *http.Request) (bool, map[string]bool, error) {
 	return isPublic, sections, nil
 }
 
-// handleSettingsEmail updates the account's email address after verifying the
-// current password. On success it rotates the current session and invalidates
-// every other session.
+// handleSettingsEmail starts a confirm-first email change: it mails a confirmation
+// link to the new address and leaves the real email untouched until that link is
+// consumed (handleConfirmEmail), so a mistyped address can't lock the owner out. The
+// session proves ownership; the per-account cap bounds mail sprayed at new addresses.
 func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	acc, ok := s.currentAccount(r)
 	if !ok {
@@ -672,137 +724,137 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 		return
 	}
-
-	currentPassword := r.FormValue("current_password")
-	newEmail := strings.TrimSpace(r.FormValue("email"))
-
-	d := s.settingsData(r.Context(), acc, false)
-	d.Email = newEmail
-
-	if currentPassword == "" || !validEmail(newEmail) {
-		d.EmailError = "Enter your current password and a valid email address"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-
-	if !s.passwordAttempts.allowed(acc.ID) {
-		d.EmailError = "Too many attempts, try again later"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-
-	hash, err := s.store.AccountPasswordHash(r.Context(), acc.ID)
-	if err != nil || !verifyPassword(currentPassword, hash) {
-		s.passwordAttempts.recordFailed(acc.ID)
-		d.EmailError = "Incorrect current password"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-	s.passwordAttempts.clear(acc.ID)
-
-	if err := s.store.UpdateEmail(r.Context(), acc.ID, newEmail); err != nil {
-		if errors.Is(err, store.ErrDuplicate) {
-			fmt.Fprintf(os.Stderr, "warning: email change rejected for account %d: duplicate %q\n", acc.ID, newEmail)
-			d.EmailError = "Could not update email"
-			renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
+	// ParseForm does not read a multipart body (the JS submits the form as
+	// multipart/form-data), and having already populated r.Form above defeats
+	// FormValue's own lazy multipart parse — so parse it explicitly, as
+	// parseVisibilityForm does, or the email field comes back empty.
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
 			return
 		}
-		http.Error(w, "Could not update email", http.StatusInternalServerError)
+	}
+
+	newEmail := strings.TrimSpace(r.FormValue("email"))
+	d := s.settingsData(r.Context(), acc, false)
+
+	if !validEmail(newEmail) {
+		d.Email = newEmail
+		d.EmailError = "Enter a valid email address"
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	if newEmail == acc.Email {
+		d.EmailError = "That is already your email address"
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	// Spend the per-account budget before the "already in use" probe below. Otherwise
+	// someone could repeatedly submit different addresses and read that reply to learn
+	// which emails have accounts; charging the probe against the cap limits how many
+	// addresses they can test.
+	if !s.emailChangeRequests.allowed(acc.ID) {
+		d.EmailError = "Too many requests, wait a little before trying again"
+		renderStatus(w, r, http.StatusTooManyRequests, pages.Settings(d, acc.FtLogin))
+		return
+	}
+	s.emailChangeRequests.recordFailed(acc.ID)
+	// Reject an address already taken by another account up front, rather than only
+	// at confirmation time; the unique constraint still backstops a race (ConsumeEmailChange).
+	if _, err := s.store.AccountByEmail(r.Context(), newEmail); err == nil {
+		d.Email = newEmail
+		d.EmailError = "That email is already in use"
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
+		return
+	} else if !errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 
-	oldSID, ok := s.currentSessionID(r)
-	if ok {
-		newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not rotate session after email change for account %d: %v\n", acc.ID, err)
-		} else if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, newSID); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not invalidate other sessions after email change for account %d: %v\n", acc.ID, err)
-		}
-	}
-
-	// Changing the email un-verifies the account: issueVerification marks it
-	// unverified and sends a link to the new address, and the pending page boxes the
-	// session there until the new address is confirmed (mirrors signup). Without
-	// this the account would keep a "verified" flag against an unproven address.
-	s.issueVerification(r.Context(), acc.ID, newEmail)
-	http.Redirect(w, r, routes.PageVerifyPending, http.StatusFound)
+	s.issueEmailChange(r.Context(), acc.ID, newEmail)
+	// Post/Redirect/Get: app.js reloads the page on any 2xx and drops inline HTML,
+	// so surface the "sent" message via a GET flash, as the deletion flow does.
+	// The real email stays acc.Email until the confirmation link is clicked.
+	http.Redirect(w, r, routes.PageSettings+"?email_pending="+url.QueryEscape(newEmail), http.StatusSeeOther)
 }
 
-// handleSettingsPassword updates the account's password after verifying the
-// current password. On success it rotates the current session and invalidates
-// every other session.
-func (s *Server) handleSettingsPassword(w http.ResponseWriter, r *http.Request) {
-	acc, ok := s.currentAccount(r)
-	if !ok {
-		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+// handleConfirmEmail is the GET the email-change link points at. It only peeks the
+// token and renders a confirm interstitial — consuming nothing, so a link prefetch
+// (mail scanner, preview bot) can't apply the change (and silently drop the owner's
+// other sessions). The interstitial's button POSTs to handleConfirmEmailConsume,
+// which is where the address actually changes. A bad/expired link shows the failure page.
+func (s *Server) handleConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		s.badLink(w, r)
 		return
 	}
-	if s.gateUnverified(w, r, acc) {
+	acc, pendingEmail, err := s.store.PeekEmailChange(r.Context(), tokenHash(token), emailChangeTokenTTL)
+	if errors.Is(err, store.ErrNotFound) {
+		s.badLink(w, r)
 		return
 	}
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, pages.ConfirmEmail(token, pendingEmail, acc.FtLogin, s.viewerLogin(r)))
+}
+
+// handleConfirmEmailConsume redeems the token from the confirm interstitial's POST,
+// promoting the pending address to the account's email (see handleConfirmEmail for why
+// this is a POST, not the GET). Confirming from the account's own browser rotates the
+// session, drops the others, and lands on settings; a link opened elsewhere signs out
+// all of the account's sessions and renders a result page. A stale/expired token, or an
+// address taken since, shows the failure page.
+func (s *Server) handleConfirmEmailConsume(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
+	token := r.FormValue("token")
+	if token == "" {
+		s.badLink(w, r)
 		return
 	}
-
-	currentPassword := r.FormValue("current_password")
-	newPassword := r.FormValue("new_password")
-	confirmPassword := r.FormValue("confirm_password")
-
-	d := s.settingsData(r.Context(), acc, false)
-
-	if currentPassword == "" || len(newPassword) < 8 {
-		d.PasswordError = "Enter your current password and a new password of at least 8 characters"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
+	acc, oldEmail, err := s.store.ConsumeEmailChange(r.Context(), tokenHash(token), emailChangeTokenTTL)
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrDuplicate) {
+		s.badLink(w, r)
 		return
 	}
-	if newPassword != confirmPassword {
-		d.PasswordError = "New password and confirmation do not match"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-
-	if !s.passwordAttempts.allowed(acc.ID) {
-		d.PasswordError = "Too many attempts, try again later"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-
-	hash, err := s.store.AccountPasswordHash(r.Context(), acc.ID)
-	if err != nil || !verifyPassword(currentPassword, hash) {
-		s.passwordAttempts.recordFailed(acc.ID)
-		d.PasswordError = "Incorrect current password"
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
-		return
-	}
-	s.passwordAttempts.clear(acc.ID)
-
-	newHash, err := hashPassword(newPassword)
 	if err != nil {
-		http.Error(w, "Could not hash password", http.StatusInternalServerError)
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
-	if err := s.store.UpdatePassword(r.Context(), acc.ID, newHash); err != nil {
-		http.Error(w, "Could not update password", http.StatusInternalServerError)
-		return
-	}
-
-	d.PasswordSaved = true
-	oldSID, ok := s.currentSessionID(r)
-	if ok {
-		newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not rotate session after password change for account %d: %v\n", acc.ID, err)
-		} else if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, newSID); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not invalidate other sessions after password change for account %d: %v\n", acc.ID, err)
+	// Tell the previous address the change happened, so a silent takeover leaves a
+	// trail. Fire-and-forget on a background context — the change is already applied,
+	// so a dropped notice is logged, not surfaced (mirrors issueEmailChange).
+	go func() {
+		if err := s.email.SendEmailChangeNotice(context.Background(), oldEmail, acc.Email); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: send email-change notice for account %d: %v\n", acc.ID, err)
 		}
+	}()
+	if cur, ok := s.currentAccount(r); ok && cur.ID == acc.ID {
+		// Confirmed from the account's own browser: keep this session alive by
+		// rotating it, then drop every other session.
+		if oldSID, ok := s.currentSessionID(r); ok {
+			newSID, err := s.rotateSession(w, r, acc.ID, oldSID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not rotate session after email change for account %d: %v\n", acc.ID, err)
+			} else if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, newSID); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not invalidate other sessions after email change for account %d: %v\n", acc.ID, err)
+			}
+		}
+		http.Redirect(w, r, routes.PageSettings, http.StatusFound)
+		return
 	}
-
-	render(w, r, pages.Settings(d, acc.FtLogin))
+	// Confirmed from a browser not logged into this account (logged out, or a
+	// different account): no session to keep, so sign out all of the account's
+	// existing sessions — the interstitial promises this unconditionally. Passing
+	// "" keeps nothing, since session ids are never empty.
+	if err := s.store.DeleteOtherSessions(r.Context(), acc.ID, ""); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not invalidate sessions after email change for account %d: %v\n", acc.ID, err)
+	}
+	render(w, r, pages.VerifyResult(true, s.viewerLogin(r)))
 }
 
 // settingsData renders the current account/visibility state into the template's shape.

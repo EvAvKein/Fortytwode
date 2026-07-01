@@ -1,6 +1,6 @@
-// Package email sends Fortytwode's transactional mail (the sign-up verification
-// link and the account-deletion confirmation link) through Resend's HTTP API. It
-// mirrors the internal/api42
+// Package email sends Fortytwode's transactional mail (the magic-link login, the
+// sign-up verification link, the email-change confirmation, and the account-deletion
+// confirmation) through Resend's HTTP API. It mirrors the internal/api42
 // style — a small net/http client with a Bearer token — rather than pulling in an
 // SDK, keeping the dependency set lean.
 package email
@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"time"
@@ -24,6 +25,11 @@ const resendEndpoint = "https://api.resend.com/emails"
 // can be tested with a fake recorder and so a missing API key degrades to a no-op.
 type Sender interface {
 	SendVerification(ctx context.Context, to, link string) error
+	SendLogin(ctx context.Context, to, link string) error
+	SendEmailChange(ctx context.Context, to, link string) error
+	// SendEmailChangeNotice tells the previous address that the account's email was
+	// changed to newEmail, so a silent takeover doesn't go unnoticed.
+	SendEmailChangeNotice(ctx context.Context, to, newEmail string) error
 	SendDeletionConfirmation(ctx context.Context, to, link string) error
 }
 
@@ -52,6 +58,21 @@ func (logSender) SendVerification(_ context.Context, to, link string) error {
 	return nil
 }
 
+func (logSender) SendLogin(_ context.Context, to, link string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): login link for %s -> %s\n", to, link)
+	return nil
+}
+
+func (logSender) SendEmailChange(_ context.Context, to, link string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): email-change confirmation for %s -> %s\n", to, link)
+	return nil
+}
+
+func (logSender) SendEmailChangeNotice(_ context.Context, to, newEmail string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): email-change notice to %s (changed to %s)\n", to, newEmail)
+	return nil
+}
+
 func (logSender) SendDeletionConfirmation(_ context.Context, to, link string) error {
 	fmt.Fprintf(os.Stderr, "email (not sent, no API key): deletion confirmation for %s -> %s\n", to, link)
 	return nil
@@ -67,6 +88,18 @@ type resendSender struct {
 
 func (s *resendSender) SendVerification(ctx context.Context, to, link string) error {
 	return s.send(ctx, to, "Verify your Fortytwode email", verificationText(link), verificationHTML(link))
+}
+
+func (s *resendSender) SendLogin(ctx context.Context, to, link string) error {
+	return s.send(ctx, to, "Your Fortytwode login link", loginText(link), loginHTML(link))
+}
+
+func (s *resendSender) SendEmailChange(ctx context.Context, to, link string) error {
+	return s.send(ctx, to, "Confirm your new Fortytwode email", emailChangeText(link), emailChangeHTML(link))
+}
+
+func (s *resendSender) SendEmailChangeNotice(ctx context.Context, to, newEmail string) error {
+	return s.send(ctx, to, "Your Fortytwode email was changed", emailChangeNoticeText(newEmail), emailChangeNoticeHTML(newEmail))
 }
 
 func (s *resendSender) SendDeletionConfirmation(ctx context.Context, to, link string) error {
@@ -119,6 +152,40 @@ func verificationHTML(link string) string {
 		`<p>Confirm your email address by clicking the link below:</p>` +
 		`<p><a href="` + link + `">Verify my email</a></p>` +
 		`<p>The link is valid for 24 hours. If you didn't create an account, you can ignore this email.</p>`
+}
+
+func loginText(link string) string {
+	return "Here's your Fortytwode login link:\n" + link + "\n\n" +
+		"The link is valid for 1 hour and can be used once. If you didn't try to log in, you can ignore this email."
+}
+
+func loginHTML(link string) string {
+	return `<p>Here's your Fortytwode login link:</p>` +
+		`<p><a href="` + link + `">Log in to Fortytwode</a></p>` +
+		`<p>The link is valid for 1 hour and can be used once. If you didn't try to log in, you can ignore this email.</p>`
+}
+
+func emailChangeText(link string) string {
+	return "Confirm this address as the new email for your Fortytwode account by opening this link:\n" + link + "\n\n" +
+		"The link is valid for 24 hours, and your account email won't change until you open it. If you didn't request this, you can ignore this email."
+}
+
+func emailChangeHTML(link string) string {
+	return `<p>Confirm this address as the new email for your Fortytwode account by clicking the link below:</p>` +
+		`<p><a href="` + link + `">Confirm my new email</a></p>` +
+		`<p>The link is valid for 24 hours, and your account email won't change until you open it. If you didn't request this, you can ignore this email.</p>`
+}
+
+func emailChangeNoticeText(newEmail string) string {
+	return "The email address for your Fortytwode account was just changed to " + newEmail + ".\n\n" +
+		"If you made this change, no action is needed. If you didn't, contact us right away at evavkein@gmail.com as someone may have access to your account."
+}
+
+func emailChangeNoticeHTML(newEmail string) string {
+	esc := html.EscapeString(newEmail)
+	return `<p>The email address for your Fortytwode account was just changed to <strong>` + esc + `</strong>.</p>` +
+		`<p>If you made this change, no action is needed. If you didn't, contact us right away at ` +
+		`<a href="mailto:evavkein@gmail.com">evavkein@gmail.com</a> as someone may have access to your account.</p>`
 }
 
 func deletionText(link string) string {

@@ -74,8 +74,7 @@ func OpenRaw(pool *pgxpool.Pool) *Store {
 // Ping verifies the database is reachable (used by the /healthcheck endpoint).
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
-// Account is an app account plus its 42 snapshot and visibility settings. The
-// password hash is never carried here; it is returned separately by AccountByEmail.
+// Account is an app account plus its 42 snapshot and visibility settings.
 type Account struct {
 	ID            int64
 	Email         string
@@ -102,60 +101,50 @@ func scanAccount(row pgx.Row) (Account, error) {
 	if err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified); err != nil {
 		return Account{}, err
 	}
-	if err := json.Unmarshal(data, &a.Data); err != nil {
+	if err := populateAccountByJsonb(&a, data, vis); err != nil {
 		return Account{}, err
 	}
-	if len(vis) > 0 {
-		if err := json.Unmarshal(vis, &a.Visibility); err != nil {
-			return Account{}, err
-		}
-	}
 	return a, nil
+}
+
+// populateAccountByJsonb fills a's jsonb fields from the raw data/visibility bytes. Shared by
+// scanAccount and any caller that scans accountCols alongside extra columns.
+func populateAccountByJsonb(a *Account, data, vis []byte) error {
+	if err := json.Unmarshal(data, &a.Data); err != nil {
+		return err
+	}
+	if len(vis) > 0 {
+		return json.Unmarshal(vis, &a.Visibility)
+	}
+	return nil
 }
 
 // CreateAccount inserts a new account with the given snapshot and returns its id.
 // The snapshot is curated (snapshot.Curate) before storage, so the row never holds
 // raw third-party data. A unique-constraint violation (email or ft_id taken) is
 // reported as ErrDuplicate.
-func (s *Store) CreateAccount(ctx context.Context, email, passwordHash string, ftID int64, ftLogin string, data map[string]json.RawMessage) (int64, error) {
+func (s *Store) CreateAccount(ctx context.Context, email string, ftID int64, ftLogin string, data map[string]json.RawMessage) (int64, error) {
 	blob, err := json.Marshal(snapshot.Curate(data))
 	if err != nil {
 		return 0, err
 	}
 	var id int64
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO accounts (email, password_hash, ft_id, ft_login, data, fetched_at)
-		VALUES ($1, $2, $3, $4, $5::jsonb, now())
+		INSERT INTO accounts (email, ft_id, ft_login, data, fetched_at)
+		VALUES ($1, $2, $3, $4::jsonb, now())
 		RETURNING id`,
-		email, passwordHash, ftID, ftLogin, string(blob)).Scan(&id)
+		email, ftID, ftLogin, string(blob)).Scan(&id)
 	if isUniqueViolation(err) {
 		return 0, ErrDuplicate
 	}
 	return id, err
 }
 
-// AccountByEmail returns the account and its password hash for login.
-func (s *Store) AccountByEmail(ctx context.Context, email string) (Account, string, error) {
-	var a Account
-	var data, vis []byte
-	var hash string
-	err := s.pool.QueryRow(ctx, `SELECT `+accountCols+`, password_hash FROM accounts WHERE email = $1`, email).
-		Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &hash)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return Account{}, "", ErrNotFound
-	}
-	if err != nil {
-		return Account{}, "", err
-	}
-	if err := json.Unmarshal(data, &a.Data); err != nil {
-		return Account{}, "", err
-	}
-	if len(vis) > 0 {
-		if err := json.Unmarshal(vis, &a.Visibility); err != nil {
-			return Account{}, "", err
-		}
-	}
-	return a, hash, nil
+// AccountByEmail returns the account for an email address, ErrNotFound if none has it.
+// The match is case-insensitive so a differently-cased address still resolves to its
+// account (e.g. login links go to the stored canonical address, not the typed casing).
+func (s *Store) AccountByEmail(ctx context.Context, email string) (Account, error) {
+	return s.accountWhere(ctx, "LOWER(email) = LOWER($1)", email)
 }
 
 // AccountByLogin returns the account for a 42 login (the public profile key).
@@ -242,23 +231,121 @@ func (s *Store) VerifyByToken(ctx context.Context, tokenHash string, ttl time.Du
 	return a, err
 }
 
-// UpdatePassword changes the account's password hash.
-func (s *Store) UpdatePassword(ctx context.Context, accountID int64, passwordHash string) error {
+// SetLoginToken stores the active login token's sha256 hex and its issue time,
+// superseding any previous one. Unlike SetVerifyToken it leaves email_verified
+// untouched: issuing a login link must not un-verify an already-verified account.
+func (s *Store) SetLoginToken(ctx context.Context, accountID int64, tokenHash string, sentAt time.Time) error {
 	_, err := s.pool.Exec(ctx,
-		`UPDATE accounts SET password_hash = $2 WHERE id = $1`,
-		accountID, passwordHash)
+		`UPDATE accounts SET login_token_hash = $2, login_sent_at = $3 WHERE id = $1`,
+		accountID, tokenHash, sentAt)
 	return err
 }
 
-// AccountPasswordHash returns the current password hash for an account.
-func (s *Store) AccountPasswordHash(ctx context.Context, accountID int64) (string, error) {
-	var hash string
-	err := s.pool.QueryRow(ctx,
-		`SELECT password_hash FROM accounts WHERE id = $1`, accountID).Scan(&hash)
+// PeekLoginToken returns the account for a live (unexpired) login token without
+// consuming it (see handleLoginCallback for why the GET must not spend the token);
+// redemption happens in ConsumeLoginToken. ErrNotFound if none matches.
+func (s *Store) PeekLoginToken(ctx context.Context, tokenHash string, ttl time.Duration) (Account, error) {
+	row := s.pool.QueryRow(ctx, `SELECT `+accountCols+`
+		FROM accounts
+		WHERE login_token_hash = $1
+		  AND login_sent_at > now() - make_interval(secs => $2)`, tokenHash, ttl.Seconds())
+	a, err := scanAccount(row)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return Account{}, ErrNotFound
 	}
-	return hash, err
+	return a, err
+}
+
+// ConsumeLoginToken redeems a login token in one statement: it matches the row by
+// login_token_hash within ttl, clears the token columns, and marks the account
+// verified — clicking a link delivered to the address proves ownership. The single
+// statement stops a token being redeemed twice concurrently; an unknown or expired
+// token matches no row (ErrNotFound).
+func (s *Store) ConsumeLoginToken(ctx context.Context, tokenHash string, ttl time.Duration) (Account, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE accounts
+		SET email_verified = true, login_token_hash = NULL, login_sent_at = NULL
+		WHERE login_token_hash = $1
+		  AND login_sent_at > now() - make_interval(secs => $2)
+		RETURNING `+accountCols, tokenHash, ttl.Seconds())
+	a, err := scanAccount(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, ErrNotFound
+	}
+	return a, err
+}
+
+// SetEmailChange parks a requested new address in pending_email with the confirmation
+// token's sha256 hex and its issue time, superseding any previous request. The real
+// email is untouched until the link sent to newEmail is consumed (ConsumeEmailChange).
+func (s *Store) SetEmailChange(ctx context.Context, accountID int64, newEmail, tokenHash string, sentAt time.Time) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET pending_email = $2, email_change_token_hash = $3, email_change_sent_at = $4 WHERE id = $1`,
+		accountID, newEmail, tokenHash, sentAt)
+	return err
+}
+
+// PeekEmailChange returns the account and its pending new address for a live
+// (matching, unexpired) email-change token without consuming or applying anything,
+// so the confirmation page can be rendered for a real request and the failure page
+// for a bad one. An unknown or expired token matches no row (ErrNotFound).
+func (s *Store) PeekEmailChange(ctx context.Context, tokenHash string, ttl time.Duration) (Account, string, error) {
+	row := s.pool.QueryRow(ctx, `SELECT `+accountCols+`, pending_email
+		FROM accounts
+		WHERE email_change_token_hash = $1
+		  AND email_change_sent_at > now() - make_interval(secs => $2)`, tokenHash, ttl.Seconds())
+	var a Account
+	var data, vis []byte
+	var pendingEmail string
+	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &pendingEmail)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, "", ErrNotFound
+	}
+	if err != nil {
+		return Account{}, "", err
+	}
+	if err := populateAccountByJsonb(&a, data, vis); err != nil {
+		return Account{}, "", err
+	}
+	return a, pendingEmail, nil
+}
+
+// ConsumeEmailChange redeems an email-change token in one statement: it matches the
+// row by email_change_token_hash within ttl, promotes pending_email to the account's
+// email, clears the pending/token columns, and returns the account plus its previous
+// address (so the caller can notify it — the CTE captures it before the UPDATE). A
+// new address taken since the request reports ErrDuplicate; an unknown or expired
+// token matches no row (ErrNotFound).
+func (s *Store) ConsumeEmailChange(ctx context.Context, tokenHash string, ttl time.Duration) (Account, string, error) {
+	row := s.pool.QueryRow(ctx, `
+		WITH sel AS (
+			SELECT id, email AS old_email FROM accounts
+			WHERE email_change_token_hash = $1
+			  AND email_change_sent_at > now() - make_interval(secs => $2)
+		)
+		UPDATE accounts a
+		SET email = a.pending_email,
+		    pending_email = NULL, email_change_token_hash = NULL, email_change_sent_at = NULL
+		FROM sel
+		WHERE a.id = sel.id
+		RETURNING `+accountColsA+`, sel.old_email`, tokenHash, ttl.Seconds())
+	var a Account
+	var data, vis []byte
+	var oldEmail string
+	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &oldEmail)
+	if isUniqueViolation(err) {
+		return Account{}, "", ErrDuplicate
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Account{}, "", ErrNotFound
+	}
+	if err != nil {
+		return Account{}, "", err
+	}
+	if err := populateAccountByJsonb(&a, data, vis); err != nil {
+		return Account{}, "", err
+	}
+	return a, oldEmail, nil
 }
 
 // DeleteAccount erases an account and everything tied to it: the row holds the 42

@@ -1,5 +1,6 @@
 // Package web serves the multi-user dashboard over HTTP: anonymous 42 sync + JSON
-// download, email/password accounts, and per-section public profiles. It owns
+// download, passwordless accounts (magic-link email + 42 OAuth), and per-section
+// public profiles. It owns
 // routing, sessions, and the background sync jobs; the stored snapshot is curated
 // into view models and rendered by the internal/view package.
 package web
@@ -24,31 +25,31 @@ import (
 
 // Server holds the dependencies shared by all handlers.
 type Server struct {
-	store            *store.Store
-	cfg              config.Config
-	limiter          *api42.Limiter // shared across all syncs to respect 42's per-app caps
-	jobs             *jobRegistry
-	secure           bool // mark cookies Secure (set when the redirect URI is https)
-	passwordAttempts *attemptLimiter[int64]
-	loginAttempts    *attemptLimiter[string]
-	verifyResends    *attemptLimiter[int64] // per-account verification-email resend cap
-	deleteRequests   *attemptLimiter[int64] // per-account deletion-confirmation request cap
-	email            email.Sender           // transactional email (verification + deletion links)
+	store               *store.Store
+	cfg                 config.Config
+	limiter             *api42.Limiter // shared across all syncs to respect 42's per-app caps
+	jobs                *jobRegistry
+	secure              bool                    // mark cookies Secure (set when the redirect URI is https)
+	loginAttempts       *attemptLimiter[string] // per-email magic-link send cap
+	verifyResends       *attemptLimiter[int64]  // per-account verification-email resend cap
+	emailChangeRequests *attemptLimiter[int64]  // per-account email-change request cap
+	deleteRequests      *attemptLimiter[int64]  // per-account deletion-confirmation request cap
+	email               email.Sender            // transactional email (login/verification/deletion links)
 }
 
 // Serve starts the web app, reading PORT (default 4242).
 func Serve(cfg config.Config, st *store.Store) error {
 	s := &Server{
-		store:            st,
-		cfg:              cfg,
-		limiter:          api42.NewLimiter(),
-		jobs:             newJobRegistry(),
-		secure:           strings.HasPrefix(cfg.RedirectURI, "https://"),
-		passwordAttempts: newAttemptLimiter[int64](maxPasswordAttempts, passwordAttemptWindow),
-		loginAttempts:    newAttemptLimiter[string](maxLoginAttempts, loginAttemptWindow),
-		verifyResends:    newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
-		deleteRequests:   newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
-		email:            email.New(cfg),
+		store:               st,
+		cfg:                 cfg,
+		limiter:             api42.NewLimiter(),
+		jobs:                newJobRegistry(),
+		secure:              strings.HasPrefix(cfg.RedirectURI, "https://"),
+		loginAttempts:       newAttemptLimiter[string](maxLoginAttempts, loginAttemptWindow),
+		verifyResends:       newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
+		emailChangeRequests: newAttemptLimiter[int64](maxEmailChangeRequests, emailChangeRequestWindow),
+		deleteRequests:      newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
+		email:               email.New(cfg),
 	}
 
 	// Periodically purge stale sync-cooldown rows, expired sessions, and accounts
@@ -68,8 +69,8 @@ func Serve(cfg config.Config, st *store.Store) error {
 				fmt.Fprintf(os.Stderr, "warning: purge unverified accounts: %v\n", err)
 			}
 			s.loginAttempts.prune()
-			s.passwordAttempts.prune()
 			s.verifyResends.prune()
+			s.emailChangeRequests.prune()
 			s.deleteRequests.prune()
 		}
 	}()
@@ -104,12 +105,13 @@ func (server *Server) routes() http.Handler {
 	api.HandleFunc(routes.APISyncDownloadCurated.Pattern(), server.handleDownloadCurated)
 	api.HandleFunc(routes.APILogInSync.Pattern(), server.handleSyncSignin)
 	api.HandleFunc(routes.APILogIn.Pattern(), server.handleLogin)
+	api.HandleFunc(routes.APILogInConsume.Pattern(), server.handleLoginConsume)
 	api.HandleFunc(routes.APILogOut.Pattern(), server.handleLogout)
 	api.HandleFunc(routes.APIAccountCreate.Pattern(), server.handleSignup)
 	api.HandleFunc(routes.APIAccountDownload.Pattern(), server.handleDownloadSaved)
 	api.HandleFunc(routes.APIAccountVisibility.Pattern(), server.handleSettings)
 	api.HandleFunc(routes.APIAccountEmail.Pattern(), server.handleSettingsEmail)
-	api.HandleFunc(routes.APIAccountPassword.Pattern(), server.handleSettingsPassword)
+	api.HandleFunc(routes.APIAccountEmailConfirm.Pattern(), server.handleConfirmEmailConsume)
 	api.HandleFunc(routes.APIAccountDelete.Pattern(), server.handleRequestDelete)
 	api.HandleFunc(routes.APIAccountDeleteConfirm.Pattern(), server.handleConfirmDelete)
 	api.HandleFunc(routes.APIVerifyResend.Pattern(), server.handleVerifyResend)
@@ -123,9 +125,11 @@ func (server *Server) routes() http.Handler {
 	pages.HandleFunc("GET "+routes.PageSyncing, server.handleSyncing)
 	pages.HandleFunc("GET "+routes.PageSignup, server.handleSignupForm)
 	pages.HandleFunc("GET "+routes.PageLogin, server.handleLoginForm)
+	pages.HandleFunc("GET "+routes.PageLoginCallback, server.handleLoginCallback)
 	pages.HandleFunc("GET "+routes.PageSettings, server.handleSettingsForm)
 	pages.HandleFunc("GET "+routes.PageVerifyPending, server.handleVerifyPending)
 	pages.HandleFunc("GET "+routes.PageVerifyEmail, server.handleVerifyEmail)
+	pages.HandleFunc("GET "+routes.PageConfirmEmail, server.handleConfirmEmail)
 	pages.HandleFunc("GET "+routes.PageConfirmDelete, server.handleDeletePending)
 	pages.HandleFunc("GET "+routes.PagePrivacy, server.handlePrivacy)
 	pages.HandleFunc("GET "+routes.PageProfile("{login}"), server.handleProfile)

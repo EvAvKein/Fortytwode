@@ -129,18 +129,16 @@ type SettingsToggle struct {
 }
 
 // SettingsData is the settings page view: the public opt-in plus per-section toggles,
-// plus account forms (email/password) and their inline feedback.
+// plus the account email form and its inline feedback.
 type SettingsData struct {
-	IsPublic      bool
-	Toggles       []SettingsToggle
-	Login         string
-	Saved         bool
-	LastSynced    string // formatted "Synced: ..." timestamp
-	CanResync     bool   // true when the owner's cooldown has expired
-	Email         string
-	EmailError       string
-	EmailSaved       bool
-	PasswordError    string
-	PasswordSaved    bool
+	IsPublic          bool
+	Toggles           []SettingsToggle
+	Login             string
+	Saved             bool
+	LastSynced        string // formatted "Synced: ..." timestamp
+	CanResync         bool   // true when the owner's cooldown has expired
+	Email             string
+	EmailError        string
+	EmailPending      string // address a confirmation link was just sent to (change not yet applied)
 	DeletionRequested bool
 }

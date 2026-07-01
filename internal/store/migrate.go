@@ -12,6 +12,16 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// migrateAdvisoryLockKey identifies the lock that stops two processes from running
+// Migrate at the same time. Postgres "advisory locks" aren't tied to any row or table —
+// each is just named by an integer the application picks, and pg_advisory_lock(K) blocks
+// until whoever else is holding K releases it. Migrate takes this key with
+// pg_advisory_lock on entry and drops it with pg_advisory_unlock on exit, so any
+// processes using the same number take turns instead of migrating at once. The value
+// itself is meaningless — a shared label, not a secret or a setting — and only has to
+// match across processes, so it's hardcoded here; any fixed int64 would do.
+const migrateAdvisoryLockKey int64 = 4242_0001
+
 // Migrate applies any embedded migrations not yet recorded in schema_migrations,
 // in filename order, each in its own transaction. Filenames are NNNN_name.sql; the
 // leading number is the version.
@@ -24,6 +34,24 @@ var migrationsFS embed.FS
 // 0001 uses IF NOT EXISTS, so an already-populated database is safely stamped at
 // version 1 the first time the runner sees it.
 func (s *Store) Migrate(ctx context.Context) error {
+	// Serialize concurrent migrators (parallel `go test ./...` binaries sharing one DB,
+	// or overlapping app starts during a rolling deploy) with a session-level advisory
+	// lock. Without it, two processes running CREATE TABLE IF NOT EXISTS at once can trip
+	// a pg_type catalog unique-violation — the existence check isn't atomic. The lock is
+	// held on a dedicated connection and released explicitly before that connection goes
+	// back to the pool, since pgxpool reuses connections and does not clear session locks.
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration lock connection: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrateAdvisoryLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	// Unlock on a fresh context so a cancelled ctx can't leave the lock stuck on the
+	// pooled connection.
+	defer conn.Exec(context.Background(), `SELECT pg_advisory_unlock($1)`, migrateAdvisoryLockKey)
+
 	if _, err := s.pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    INT PRIMARY KEY,

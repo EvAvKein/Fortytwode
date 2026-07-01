@@ -1,0 +1,23 @@
+package pages
+
+import "github.com/EvAvKein/Fortytwode/internal/routes"
+
+// ConfirmEmail is the interstitial the email-change link's GET lands on; its button
+// POSTs the token to actually apply the change (see handleConfirmEmail for why the
+// change isn't applied by the GET). newEmail is the pending address being confirmed,
+// and accountLogin names the account it will belong to.
+templ ConfirmEmail(token string, newEmail string, accountLogin string, viewerLogin string) {
+	@Layout("Confirm your new email", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Confirm your new email?</h1>
+			<p class="muted">
+				This will make <strong>{ newEmail }</strong> the email for the Fortytwode
+				account of <strong>{ accountLogin }</strong>. Any other sessions will be signed out.
+			</p>
+			<form method="post" action={ routes.APIAccountEmailConfirm.URL() } class="form">
+				<input type="hidden" name="token" value={ token }/>
+				<button type="submit" class="button">Confirm new email</button>
+			</form>
+		</main>
+	}
+}

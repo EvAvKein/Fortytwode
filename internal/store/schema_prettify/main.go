@@ -128,15 +128,15 @@ func collectConstraints(lines []string) map[string]map[string]*constraint {
 	return cons
 }
 
-// writeColumn writes a single column definition with inlined constraints.
-func writeColumn(ew *errWriter, colName, colDef string, cs *constraint) {
+// columnLine builds a single column definition with inlined constraints, without a
+// trailing comma or newline. The caller joins columns with commas so the last column
+// of a table gets none (a trailing comma before ");" is invalid SQL).
+func columnLine(colName, colDef string, cs *constraint) string {
 	if cs != nil && cs.serial {
 		if cs.primaryKey {
-			ew.WriteString("    " + colName + " SERIAL PRIMARY KEY,\n")
-		} else {
-			ew.WriteString("    " + colName + " SERIAL NOT NULL,\n")
+			return "    " + colName + " SERIAL PRIMARY KEY"
 		}
-		return
+		return "    " + colName + " SERIAL NOT NULL"
 	}
 
 	suffix := ""
@@ -150,14 +150,10 @@ func writeColumn(ew *errWriter, colName, colDef string, cs *constraint) {
 		suffix += " REFERENCES " + cs.fk
 	}
 
-	if suffix != "" {
-		if strings.Contains(suffix, "PRIMARY KEY") {
-			colDef = strings.TrimSuffix(colDef, " NOT NULL")
-		}
-		ew.WriteString("    " + colName + " " + colDef + suffix + ",\n")
-	} else {
-		ew.WriteString("    " + colName + " " + colDef + ",\n")
+	if strings.Contains(suffix, "PRIMARY KEY") {
+		colDef = strings.TrimSuffix(colDef, " NOT NULL")
 	}
+	return "    " + colName + " " + colDef + suffix
 }
 
 func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*constraint) error {
@@ -165,6 +161,7 @@ func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*co
 	inCreate := false
 	currentTable := ""
 	prevEnd := false
+	var cols []string // columns of the current table, joined with commas at ");"
 
 	for _, line := range lines {
 		switch {
@@ -184,9 +181,11 @@ func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*co
 			m := reCreateTable.FindStringSubmatch(line)
 			currentTable = strings.ReplaceAll(m[1], "public.", "")
 			ew.WriteString("CREATE TABLE " + currentTable + " (\n")
+			cols = cols[:0]
 			prevEnd = false
 
 		case inCreate && reEndParen.MatchString(line):
+			ew.WriteString(strings.Join(cols, ",\n") + "\n")
 			ew.WriteString(");\n")
 			inCreate = false
 			currentTable = ""
@@ -203,7 +202,7 @@ func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*co
 			if tc := cons[currentTable]; tc != nil {
 				cs = tc[parts[0]]
 			}
-			writeColumn(ew, parts[0], parts[1], cs)
+			cols = append(cols, columnLine(parts[0], parts[1], cs))
 		}
 
 		if ew.err != nil {

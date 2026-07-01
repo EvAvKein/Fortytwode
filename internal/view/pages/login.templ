@@ -2,7 +2,8 @@ package pages
 
 import "github.com/EvAvKein/Fortytwode/internal/routes"
 
-// LoginForm is the sign-in page; errMsg is shown when non-empty.
+// LoginForm is the sign-in page; errMsg is shown when non-empty. Login is passwordless:
+// an emailed one-time link, or the 42 OAuth button.
 templ LoginForm(errMsg string, viewerLogin string) {
 	@Layout("Log in", viewerLogin, "") {
 		<main id="main" class="centered">
@@ -12,11 +13,43 @@ templ LoginForm(errMsg string, viewerLogin string) {
 			}
 			<form method={ routes.APILogIn.MethodLower() } action={ routes.APILogIn.URL() } class="form">
 				<label>Email <input type="email" name="email" required/></label>
-				<label>Password <input type="password" name="password" required/></label>
-				<button type="submit" class="button">Log in</button>
+				<button type="submit" class="button">Send login link</button>
 			</form>
 			<p class="auth-divider">or</p>
 			<a class="button ft" href={ templ.SafeURL(routes.APIAuth42Login.URL()) }>Log in with 42</a>
+		</main>
+	}
+}
+
+// LoginLinkSent is shown after requesting a magic link. It is deliberately identical
+// whether or not an account exists for the address, so the page can't be used to
+// tell which emails are registered.
+templ LoginLinkSent(email string, viewerLogin string) {
+	@Layout("Check your email", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Check your email</h1>
+			<p class="muted">
+				If an account exists for <strong>{ email }</strong>, we've sent a login link to
+				it. Open the link to finish logging in, it's valid for 1 hour.
+			</p>
+			<p class="muted"><a href={ templ.SafeURL(routes.PageLogin) }>Back to log in</a></p>
+		</main>
+	}
+}
+
+// LoginConfirm is the interstitial the magic-link GET lands on; its button POSTs the
+// token to actually log in (see handleLoginCallback for why login isn't the GET).
+templ LoginConfirm(token string, viewerLogin string) {
+	@Layout("Confirm login", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Log in to Fortytwode?</h1>
+			if viewerLogin != "" {
+				<p class="muted">You're already signed in. Continuing will switch to the account this link was sent to.</p>
+			}
+			<form method="post" action={ routes.APILogInConsume.URL() } class="form">
+				<input type="hidden" name="token" value={ token }/>
+				<button type="submit" class="button">Log in</button>
+			</form>
 		</main>
 	}
 }

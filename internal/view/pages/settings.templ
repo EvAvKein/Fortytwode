@@ -54,8 +54,8 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 			</form>
 			<h2>Account</h2>
 			<form method="post" action={ routes.APIAccountEmail.URL() } data-method={ routes.APIAccountEmail.MethodLower() } class="form">
-				if d.EmailSaved {
-					<p class="good">Email updated</p>
+				if d.EmailPending != "" {
+					<p class="good">Confirmation link sent to { d.EmailPending }. Your email will change once you open it.</p>
 				}
 				if d.EmailError != "" {
 					<p class="error">{ d.EmailError }</p>
@@ -64,32 +64,8 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 					Email
 					<input type="email" name="email" value={ d.Email } required/>
 				</label>
-				<label>
-					Current password
-					<input type="password" name="current_password" autocomplete="current-password" required/>
-				</label>
+				<p class="muted">Changing this will email a confirmation link to the new address. Your email will stay the same until you open that link.</p>
 				<button type="submit" class="button">Update email</button>
-			</form>
-			<form method="post" action={ routes.APIAccountPassword.URL() } data-method={ routes.APIAccountPassword.MethodLower() } class="form">
-				if d.PasswordSaved {
-					<p class="good">Password updated</p>
-				}
-				if d.PasswordError != "" {
-					<p class="error">{ d.PasswordError }</p>
-				}
-				<label>
-					Current password
-					<input type="password" name="current_password" autocomplete="current-password" required/>
-				</label>
-				<label>
-					New password (min 8)
-					<input type="password" name="new_password" minlength="8" autocomplete="new-password" required/>
-				</label>
-				<label>
-					Confirm new password
-					<input type="password" name="confirm_password" minlength="8" autocomplete="new-password" required/>
-				</label>
-				<button type="submit" class="button">Update password</button>
 			</form>
 			<h2>My data</h2>
 			<p class="muted">Download a copy of the saved 42 data.</p>

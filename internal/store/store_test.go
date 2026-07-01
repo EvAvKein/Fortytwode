@@ -26,7 +26,7 @@ func TestAccountsAndSessions(t *testing.T) {
 		"me":             json.RawMessage(`{"login":"` + login + `"}`),
 		"projects_users": json.RawMessage(`[{"project":{"name":"libft"}}]`),
 	}
-	id, err := st.CreateAccount(ctx, email, "hash$value", ftID, login, data)
+	id, err := st.CreateAccount(ctx, email, ftID, login, data)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -37,19 +37,22 @@ func TestAccountsAndSessions(t *testing.T) {
 	// The non-colliding fields use a fresh uniqueID() (not ftID+1) so a parallel
 	// test can't accidentally own that id and turn this into an ft_id collision.
 	t.Run("DuplicateEmail", func(t *testing.T) {
-		if _, err := st.CreateAccount(ctx, email, "h", uniqueID(), "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
+		if _, err := st.CreateAccount(ctx, email, uniqueID(), "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
 			t.Errorf("got %v, want ErrDuplicate", err)
 		}
 	})
 	t.Run("DuplicateFtID", func(t *testing.T) {
-		if _, err := st.CreateAccount(ctx, "other-"+email, "h", ftID, "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
+		if _, err := st.CreateAccount(ctx, "other-"+email, ftID, "other-"+login, data); !errors.Is(err, store.ErrDuplicate) {
 			t.Errorf("got %v, want ErrDuplicate", err)
 		}
 	})
 
 	t.Run("AccountByEmail", func(t *testing.T) {
-		if acc, hash, err := st.AccountByEmail(ctx, email); err != nil || hash != "hash$value" || acc.ID != id {
-			t.Errorf("acc=%+v hash=%q err=%v", acc, hash, err)
+		if acc, err := st.AccountByEmail(ctx, email); err != nil || acc.ID != id {
+			t.Errorf("acc=%+v err=%v", acc, err)
+		}
+		if _, err := st.AccountByEmail(ctx, "missing-"+email); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("missing email: got %v, want ErrNotFound", err)
 		}
 	})
 	t.Run("AccountByLogin", func(t *testing.T) {
@@ -125,7 +128,7 @@ func TestEmailVerification(t *testing.T) {
 	st := storetest.OpenStore(t)
 	ctx := context.Background()
 	u := uniqueID()
-	id, err := st.CreateAccount(ctx, fmt.Sprintf("verify-%d@e.st", u), "h", u,
+	id, err := st.CreateAccount(ctx, fmt.Sprintf("verify-%d@e.st", u), u,
 		fmt.Sprintf("verifier%d", u), map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -180,6 +183,138 @@ func TestEmailVerification(t *testing.T) {
 	})
 }
 
+func TestLoginToken(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+
+	const (
+		tok = "login-token-hash-abc123" // opaque to the store; hashing is the web layer's job
+		ttl = time.Hour
+	)
+
+	newAcct := func() (int64, int64) {
+		u := uniqueID()
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("login-%d@e.st", u), u,
+			fmt.Sprintf("logger%d", u), map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { st.DeleteAccount(ctx, id) })
+		return id, u
+	}
+
+	t.Run("HappyPath", func(t *testing.T) {
+		id, u := newAcct()
+		if err := st.SetLoginToken(ctx, id, tok, time.Now()); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		// Issuing a login link must not verify the account on its own.
+		if a, _ := st.AccountByFtID(ctx, u); a.EmailVerified {
+			t.Error("setting a login token should not verify the account")
+		}
+		acc, err := st.ConsumeLoginToken(ctx, tok, ttl)
+		if err != nil || acc.ID != id || !acc.EmailVerified {
+			t.Fatalf("consume: acc=%+v err=%v, want id=%d verified", acc, err, id)
+		}
+		// Consuming verifies (proof of address control) and is single-use.
+		if a, _ := st.AccountByFtID(ctx, u); !a.EmailVerified {
+			t.Error("consuming a login token should verify the account")
+		}
+		if _, err := st.ConsumeLoginToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("token replay: got %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("Expired", func(t *testing.T) {
+		id, _ := newAcct()
+		if err := st.SetLoginToken(ctx, id, tok, time.Now().Add(-2*time.Hour)); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		if _, err := st.ConsumeLoginToken(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired token: got %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("Unknown", func(t *testing.T) {
+		if _, err := st.ConsumeLoginToken(ctx, "no-such-token", ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("unknown token: got %v, want ErrNotFound", err)
+		}
+	})
+}
+
+func TestEmailChange(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+
+	// Each subtest uses a distinct token (real tokens are unique per issue), so an
+	// unconsumed row from one subtest can't be matched by another.
+	const ttl = 24 * time.Hour
+
+	newAcct := func() (int64, string) {
+		u := uniqueID()
+		email := fmt.Sprintf("change-%d@e.st", u)
+		id, err := st.CreateAccount(ctx, email, u,
+			fmt.Sprintf("changer%d", u), map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { st.DeleteAccount(ctx, id) })
+		return id, email
+	}
+
+	t.Run("HappyPath", func(t *testing.T) {
+		tok := fmt.Sprintf("email-change-%d", uniqueID())
+		id, oldEmail := newAcct()
+		newEmail := fmt.Sprintf("changed-%d@e.st", uniqueID())
+		if err := st.SetEmailChange(ctx, id, newEmail, tok, time.Now()); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		// The real email is unchanged until the link is consumed.
+		if acc, _ := st.AccountByEmail(ctx, oldEmail); acc.ID != id {
+			t.Error("email should not change before confirmation")
+		}
+		acc, gotOld, err := st.ConsumeEmailChange(ctx, tok, ttl)
+		if err != nil || acc.ID != id || acc.Email != newEmail {
+			t.Fatalf("consume: acc=%+v err=%v, want id=%d email=%s", acc, err, id, newEmail)
+		}
+		if gotOld != oldEmail {
+			t.Errorf("old email: got %q, want %q", gotOld, oldEmail)
+		}
+		if acc, err := st.AccountByEmail(ctx, newEmail); err != nil || acc.ID != id {
+			t.Errorf("lookup by new email: %+v %v", acc, err)
+		}
+		if _, _, err := st.ConsumeEmailChange(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("token replay: got %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("Duplicate", func(t *testing.T) {
+		tok := fmt.Sprintf("email-change-%d", uniqueID())
+		id, _ := newAcct()
+		_, taken := newAcct() // taken is an existing account's email
+		if err := st.SetEmailChange(ctx, id, taken, tok, time.Now()); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		if _, _, err := st.ConsumeEmailChange(ctx, tok, ttl); !errors.Is(err, store.ErrDuplicate) {
+			t.Errorf("confirming into a taken address: got %v, want ErrDuplicate", err)
+		}
+	})
+
+	t.Run("Expired", func(t *testing.T) {
+		tok := fmt.Sprintf("email-change-%d", uniqueID())
+		id, _ := newAcct()
+		newEmail := fmt.Sprintf("changed-%d@e.st", uniqueID())
+		if err := st.SetEmailChange(ctx, id, newEmail, tok, time.Now().Add(-25*time.Hour)); err != nil {
+			t.Fatalf("set token: %v", err)
+		}
+		if _, _, err := st.ConsumeEmailChange(ctx, tok, ttl); !errors.Is(err, store.ErrNotFound) {
+			t.Errorf("expired token: got %v, want ErrNotFound", err)
+		}
+	})
+}
+
 func TestDeletionConfirmation(t *testing.T) {
 	t.Parallel()
 	st := storetest.OpenStore(t)
@@ -193,7 +328,7 @@ func TestDeletionConfirmation(t *testing.T) {
 	newAcct := func() (int64, string) {
 		u := uniqueID()
 		login := fmt.Sprintf("deltok%d", u)
-		id, err := st.CreateAccount(ctx, fmt.Sprintf("deltok-%d@e.st", u), "h", u, login,
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("deltok-%d@e.st", u), u, login,
 			map[string]json.RawMessage{"me": json.RawMessage(`{}`)})
 		if err != nil {
 			t.Fatalf("create: %v", err)
@@ -303,7 +438,7 @@ func TestDeleteAccount(t *testing.T) {
 	login := fmt.Sprintf("del%d", unique)
 	data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
 
-	id, err := st.CreateAccount(ctx, fmt.Sprintf("del-%d@e.st", unique), "h", unique, login, data)
+	id, err := st.CreateAccount(ctx, fmt.Sprintf("del-%d@e.st", unique), unique, login, data)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -350,7 +485,7 @@ func TestPurgeExpiredSessions(t *testing.T) {
 	login := fmt.Sprintf("purge%d", unique)
 	data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
 
-	id, err := st.CreateAccount(ctx, fmt.Sprintf("purge-%d@e.st", unique), "h", unique, login, data)
+	id, err := st.CreateAccount(ctx, fmt.Sprintf("purge-%d@e.st", unique), unique, login, data)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -390,7 +525,7 @@ func TestPurgeUnverifiedAccounts(t *testing.T) {
 		u := uniqueID()
 		login := fmt.Sprintf("reap%d", u)
 		data := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"` + login + `"}`)}
-		id, err := st.CreateAccount(ctx, fmt.Sprintf("reap-%d@e.st", u), "h", u, login, data)
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("reap-%d@e.st", u), u, login, data)
 		if err != nil {
 			t.Fatalf("create: %v", err)
 		}
@@ -444,7 +579,7 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	login := fmt.Sprintf("cred%d", unique)
 	ftID := unique
 
-	id, err := st.CreateAccount(ctx, email, "hash$value", ftID, login, map[string]json.RawMessage{
+	id, err := st.CreateAccount(ctx, email, ftID, login, map[string]json.RawMessage{
 		"me": json.RawMessage(`{"login":"` + login + `"}`),
 	})
 	if err != nil {
@@ -457,12 +592,12 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	if err := st.UpdateEmail(ctx, id, newEmail); err != nil {
 		t.Fatalf("update email: %v", err)
 	}
-	if acc, _, err := st.AccountByEmail(ctx, newEmail); err != nil || acc.Email != newEmail {
+	if acc, err := st.AccountByEmail(ctx, newEmail); err != nil || acc.Email != newEmail {
 		t.Errorf("lookup new email: %+v %v", acc, err)
 	}
 
 	otherLogin := fmt.Sprintf("other%d", unique)
-	otherID, err := st.CreateAccount(ctx, email, "h", uniqueID(), otherLogin, map[string]json.RawMessage{
+	otherID, err := st.CreateAccount(ctx, email, uniqueID(), otherLogin, map[string]json.RawMessage{
 		"me": json.RawMessage(`{"login":"` + otherLogin + `"}`),
 	})
 	if err != nil {
@@ -471,22 +606,6 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	t.Cleanup(func() { st.DeleteAccount(ctx, otherID) })
 	if err := st.UpdateEmail(ctx, id, email); !errors.Is(err, store.ErrDuplicate) {
 		t.Errorf("duplicate email update: got %v, want ErrDuplicate", err)
-	}
-
-	// AccountPasswordHash returns the stored hash.
-	if hash, err := st.AccountPasswordHash(ctx, id); err != nil || hash != "hash$value" {
-		t.Errorf("password hash: got %q %v", hash, err)
-	}
-	if _, err := st.AccountPasswordHash(ctx, 0); !errors.Is(err, store.ErrNotFound) {
-		t.Errorf("missing account hash: got %v, want ErrNotFound", err)
-	}
-
-	// UpdatePassword changes the hash.
-	if err := st.UpdatePassword(ctx, id, "newhash"); err != nil {
-		t.Fatalf("update password: %v", err)
-	}
-	if hash, err := st.AccountPasswordHash(ctx, id); err != nil || hash != "newhash" {
-		t.Errorf("updated password hash: got %q %v", hash, err)
 	}
 
 	// DeleteOtherSessions keeps the current session and removes the rest.
