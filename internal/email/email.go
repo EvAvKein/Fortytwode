@@ -13,6 +13,7 @@ import (
 	"html"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/config"
@@ -35,18 +36,25 @@ type Sender interface {
 
 // New returns a Sender from config. With no RESEND_API_KEY it returns a logging
 // no-op sender (so local dev and tests don't need a real key — the link is printed
-// to stderr); otherwise it returns a live Resend client.
-func New(cfg config.Config) Sender {
+// to stderr); otherwise it returns a live Resend client. In production (an https
+// redirect URI, the same signal that marks cookies Secure) a missing key is an
+// error rather than a fallback: the logging sender would write otherwise live
+// one-time login/verification links into the server logs,
+// where anyone with log access would redeem them.
+func New(cfg config.Config) (Sender, error) {
 	if cfg.ResendAPIKey == "" {
+		if strings.HasPrefix(cfg.RedirectURI, "https://") {
+			return nil, fmt.Errorf("RESEND_API_KEY must be set in production: without it, live login/verification links would be written to logs instead of emailed")
+		}
 		fmt.Fprintln(os.Stderr, "warning: RESEND_API_KEY unset; verification emails will be logged, not sent")
-		return logSender{}
+		return logSender{}, nil
 	}
 	return &resendSender{
 		apiKey:  cfg.ResendAPIKey,
 		from:    cfg.MailFrom,
 		replyTo: cfg.MailReplyTo,
 		http:    &http.Client{Timeout: 15 * time.Second},
-	}
+	}, nil
 }
 
 // logSender stands in when no API key is configured: it prints the link so a

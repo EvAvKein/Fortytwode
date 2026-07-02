@@ -39,6 +39,10 @@ type Server struct {
 
 // Serve starts the web app, reading PORT (default 4242).
 func Serve(cfg config.Config, st *store.Store) error {
+	sender, err := email.New(cfg)
+	if err != nil {
+		return err
+	}
 	s := &Server{
 		store:               st,
 		cfg:                 cfg,
@@ -49,7 +53,7 @@ func Serve(cfg config.Config, st *store.Store) error {
 		verifyResends:       newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
 		emailChangeRequests: newAttemptLimiter[int64](maxEmailChangeRequests, emailChangeRequestWindow),
 		deleteRequests:      newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
-		email:               email.New(cfg),
+		email:               sender,
 	}
 
 	// Periodically purge stale sync-cooldown rows, expired sessions, and accounts
