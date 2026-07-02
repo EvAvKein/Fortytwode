@@ -30,7 +30,7 @@ type Sender interface {
 	// SendEmailChangeNotice tells the previous address that the account's email was
 	// changed to newEmail, so a silent takeover doesn't go unnoticed.
 	SendEmailChangeNotice(ctx context.Context, to, newEmail string) error
-	SendDeletionConfirmation(ctx context.Context, to, link string) error
+	SendDeletionConfirmation(ctx context.Context, to, login, link string) error
 }
 
 // New returns a Sender from config. With no RESEND_API_KEY it returns a logging
@@ -73,8 +73,8 @@ func (logSender) SendEmailChangeNotice(_ context.Context, to, newEmail string) e
 	return nil
 }
 
-func (logSender) SendDeletionConfirmation(_ context.Context, to, link string) error {
-	fmt.Fprintf(os.Stderr, "email (not sent, no API key): deletion confirmation for %s -> %s\n", to, link)
+func (logSender) SendDeletionConfirmation(_ context.Context, to, login, link string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): deletion confirmation for %s (%s) -> %s\n", to, login, link)
 	return nil
 }
 
@@ -102,8 +102,8 @@ func (s *resendSender) SendEmailChangeNotice(ctx context.Context, to, newEmail s
 	return s.send(ctx, to, "Your Fortytwode email was changed", emailChangeNoticeText(newEmail), emailChangeNoticeHTML(newEmail))
 }
 
-func (s *resendSender) SendDeletionConfirmation(ctx context.Context, to, link string) error {
-	return s.send(ctx, to, "Confirm your Fortytwode account deletion", deletionText(link), deletionHTML(link))
+func (s *resendSender) SendDeletionConfirmation(ctx context.Context, to, login, link string) error {
+	return s.send(ctx, to, "Confirm your Fortytwode account deletion", deletionText(login, link), deletionHTML(login, link))
 }
 
 // send posts one transactional email to Resend's API.
@@ -188,14 +188,15 @@ func emailChangeNoticeHTML(newEmail string) string {
 		`<a href="mailto:evavkein@gmail.com">evavkein@gmail.com</a> as someone may have access to your account.</p>`
 }
 
-func deletionText(link string) string {
-	return "We received a request to delete your Fortytwode account.\n\n" +
+func deletionText(login, link string) string {
+	return "We received a request to delete your Fortytwode account (" + login + ").\n\n" +
 		"Confirm the deletion by opening this link:\n" + link + "\n\n" +
 		"The link is valid for 24 hours. If you didn't request this, you can ignore this email and nothing will be deleted."
 }
 
-func deletionHTML(link string) string {
-	return `<p>We received a request to delete your Fortytwode account.</p>` +
+func deletionHTML(login, link string) string {
+	esc := html.EscapeString(login)
+	return `<p>We received a request to delete your Fortytwode account (<strong>` + esc + `</strong>).</p>` +
 		`<p>Confirm the deletion by clicking the link below:</p>` +
 		`<p><a href="` + link + `">Confirm account deletion</a></p>` +
 		`<p>The link is valid for 24 hours. If you didn't request this, you can ignore this email and nothing will be deleted.</p>`

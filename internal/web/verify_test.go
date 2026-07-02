@@ -61,7 +61,7 @@ func (f *fakeSender) SendEmailChangeNotice(_ context.Context, to, newEmail strin
 	return nil
 }
 
-func (f *fakeSender) SendDeletionConfirmation(_ context.Context, to, link string) error {
+func (f *fakeSender) SendDeletionConfirmation(_ context.Context, to, login, link string) error {
 	f.record(to, "Confirm your Fortytwode account deletion", link)
 	return nil
 }

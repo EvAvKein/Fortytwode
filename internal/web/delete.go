@@ -25,7 +25,7 @@ func (s *Server) deleteLink(token string) string {
 // and fires the confirmation email asynchronously. Mirrors issueVerification: a
 // dropped send isn't fatal (the user can request again), so it is logged, not
 // surfaced. Nothing is erased here — only the consumed link deletes the account.
-func (s *Server) issueDeletion(ctx context.Context, accountID int64, email string) {
+func (s *Server) issueDeletion(ctx context.Context, accountID int64, email, login string) {
 	token := randomToken()
 	if err := s.store.SetDeleteToken(ctx, accountID, tokenHash(token), time.Now()); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: set delete token for account %d: %v\n", accountID, err)
@@ -33,7 +33,7 @@ func (s *Server) issueDeletion(ctx context.Context, accountID int64, email strin
 	}
 	link := s.deleteLink(token)
 	go func() {
-		if err := s.email.SendDeletionConfirmation(context.Background(), email, link); err != nil {
+		if err := s.email.SendDeletionConfirmation(context.Background(), email, login, link); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: send deletion email for account %d: %v\n", accountID, err)
 		}
 	}()
@@ -61,7 +61,7 @@ func (s *Server) handleRequestDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.deleteRequests.recordFailed(acc.ID)
-	s.issueDeletion(r.Context(), acc.ID, acc.Email)
+	s.issueDeletion(r.Context(), acc.ID, acc.Email, acc.FtLogin)
 	http.Redirect(w, r, routes.PageSettings+"?deletion=requested", http.StatusSeeOther)
 }
 
