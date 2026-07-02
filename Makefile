@@ -1,4 +1,4 @@
-# fortytwode — common dev tasks. Run `make <target>` (defaults to `build`).
+# fortytwode — common dev tasks. Run `make <target>`.
 #
 # A .env in this directory is loaded automatically and its vars exported to the
 # run targets (so DATABASE_URL, FT_CLIENT_ID, etc. reach the binary). Use the
@@ -10,48 +10,161 @@ export
 endif
 
 BINARY := fortytwode
+.DEFAULT_GOAL := build
+
+# ============================================================================
+# ║ DEV
+# ============================================================================
+
+# setup-hooks: install the pre-push hook into .git/hooks/
+setup-hooks:
+	cp pre-push .git/hooks/pre-push
+	chmod +x .git/hooks/pre-push
+
+# dev: build + run the full stack (db, app, HTTP Nginx) at http://localhost:8080,
+# rebuilds the app on source edits
+dev:
+	docker compose up --build --watch
+
+# ============================================================================
+# ║ CODEGEN
+# ============================================================================
 
 # build: regenerate templ code, then compile the binary (default target)
 build: generate
 	go build -o $(BINARY) .
 
-# generate: regenerate the templ view code (internal/view/*_templ.go)
+# generate: regenerate the templ view code
 generate:
 	go generate ./...
 
-# dev: build + run the full stack (db, app, HTTP Nginx) at http://localhost:8080,
-# rebuilding the app on source edits via `docker compose watch`
-dev:
-	docker compose up --build --watch
+# clean: remove the binary and generated templ code
+clean:
+	rm -f $(BINARY)
+	find internal -name '*_templ.go' -delete
 
-# prod: (re)start the production stack (TLS + rate-limiting Nginx) on :80/:443,
-# detached. Assumes a cert already exists — use `make deploy` for the first run.
+# ============================================================================
+# ║ DOCKER LIFECYCLE
+# ============================================================================
+
+# logs: follow the containers' logs
+logs:
+	docker compose logs -f
+
+# down: stop the containers
+down:
+	docker compose down
+
+# prune: remove all containers and locally-built images that belong to this project
+prune:
+	docker compose down --rmi local
+
+# volume-rm: remove the database volume (run after `make down` to ensure containers are stopped)
+volume-rm:
+	docker volume rm fortytwode_pgdata
+
+# ============================================================================
+# ║ TESTS & CODE QUALITY
+# ============================================================================
+
+# test: run the Go test suite.
+# When the local Postgres isn't already running, spins it up and tears it down afterwards
+test: generate
+	@db_started=0; \
+	if ! nc -z localhost 5432 2>/dev/null; then \
+		docker compose up -d db --wait; \
+		db_started=1; \
+	fi; \
+	go test ./...; \
+	if [ "$$db_started" = "1" ]; then docker compose down; fi
+
+# check: format, vet, scan for known CVEs, and build
+check: fmt-check vet vuln build
+
+# fmt: format Go and templ source
+fmt:
+	gofmt -w .
+	go tool templ fmt .
+
+# fmt-check: fail if any Go file is not gofmt-clean (used by `check`/CI).
+# Runs gofmt -w first to auto-fix, then -l to fail on anything that remained dirty
+# (e.g. a file that couldn't be parsed).
+fmt-check: fmt
+	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needs running on:"; echo "$$out"; exit 1; fi
+
+# vet: catch likely bugs the compiler accepts
+# e.g bad Printf args, unreachable code, misused struct tags
+vet: generate
+	go vet ./...
+
+# vuln: scan dependencies and reachable code for known CVEs
+vuln:
+	go tool govulncheck ./...
+
+# tidy: prune go.mod / go.sum
+tidy:
+	go mod tidy
+
+# ============================================================================
+# ║ CLI TOOLS
+# ============================================================================
+
+# fetch: build, then download your own 42 data into ./output (CLI personal tool)
+fetch: build
+	./$(BINARY) fetch
+
+# fetch-curated: build, then dump only the single curated JSON we'd persist (./output/curated.json).
+# Serves as a transparency preview of what the database stores
+fetch-curated: build
+	./$(BINARY) fetch curated
+
+# ============================================================================
+# ║ PRODUCTION
+# ============================================================================
+
+# deploy: full prod deploy/renewal
+deploy: down cert prod
+
+# prod: (re)start the production stack (TLS + rate-limiting Nginx) on :80/:443, detached.
+# Assumes a cert already exists - use `make deploy` for the first run
 prod:
 	docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up --build -d
 
-# cert: obtain/renew the Let's Encrypt certificate. Usually run via `make deploy`;
-# use standalone only when you need to renew the cert without redeploying prod.
+# update-prod: pull remote updates, migrate the database, and relaunch prod
+update-prod: pull migrate prod
+
+# cert: obtain/renew the Let's Encrypt certificate.
+# Usually run via `make deploy`, use standalone only when you need to renew the cert without redeploying prod
 cert:
 	docker compose -f deploy/docker-compose.cert.yml up --force-recreate --exit-code-from certbot
 	docker compose -f deploy/docker-compose.cert.yml down
 
-# deploy: full prod deploy/renewal - `down` -> `cert` -> `prod`
-deploy: down cert prod
+# pull: fetch latest changes from the remote repository
+pull:
+	git pull
 
-# migrate: apply any pending database migrations against the running stack's db.
-# serve also applies them on boot; this runs them standalone (e.g. before a deploy)
-# without starting the server. --build picks up the current source.
+# ============================================================================
+# ║ DATABASE
+# ============================================================================
+
+# migrate: apply any pending database migrations against the running database.
+# `prod` also applies them on boot, this runs them standalone (e.g. before a deploy) without starting the server
 migrate:
 	docker compose run --build --rm app migrate
 
-# backup: dump the database to ./backup-<timestamp>.dump (Postgres custom format).
-# Restore with:
-#   docker compose exec -T db pg_restore -U fortytwode -d fortytwode --clean < <file>
+# backup: dump the database to ./backup-<timestamp>.dump (Postgres' custom format).
+# Restore from a dump with `make restore FILE=<dump>`.
 backup:
 	docker compose exec -T db pg_dump -U fortytwode -Fc fortytwode > backup-$$(date +%F-%H%M).dump
 
+# restore: load a Postgres dump into the database, replacing current data.
+# Usage: make restore FILE=backup-2026-07-02-1200.dump
+restore:
+	@test -n "$(FILE)" || { echo "usage: make restore FILE=<dump>" >&2; exit 1; }
+	docker compose exec -T db pg_restore -U fortytwode -d fortytwode --clean < $(FILE)
+
 # schema: regenerate the reference internal/store/schema.sql from the running db.
-# Reference only — the source of truth is internal/store/migrations/*.sql.
+# Generated file is for reference only. The source of truth is in the internal/store/migrations/*.sql files
 schema:
 	@echo "Regenerating schema..."
 	@bash -o pipefail -c '{ echo "-- REFERENCE ONLY — generated by '\''make schema'\'', NOT executed. The source"; \
@@ -63,83 +176,4 @@ schema:
 	  && echo "Schema written to internal/store/schema.sql" \
 	  || { echo "Failed to regenerate schema" >&2; exit 1; }
 
-# pull: fetch latest changes from the remote
-pull:
-	git pull
-
-# update-prod: pull, migrate, and relaunch prod
-update-prod: pull migrate prod
-
-# down: stop and remove the stack's containers
-down:
-	docker compose down
-
-# volume-rm: remove the data volume (run after `make down` to ensure containers are stopped)
-volume-rm:
-	docker volume rm fortytwode_pgdata
-
-# prune: remove all containers and locally-built images for this project's compose
-prune:
-	docker compose down --rmi local
-
-# logs: follow the stack's logs
-logs:
-	docker compose logs -f
-
-# fetch: build, then download your own 42 data into ./output (CLI personal tool)
-fetch: build
-	./$(BINARY) fetch
-
-# fetch-curated: build, then dump only the single curated JSON we'd persist (./output/curated.json).
-# Serves as a transparency preview of what the database stores
-fetch-curated: build
-	./$(BINARY) fetch curated
-
-# fmt: format Go and templ source
-fmt:
-	gofmt -w .
-	go tool templ fmt .
-
-# fmt-check: fail if any Go file is not gofmt-clean (used by `check`/CI). Runs
-# gofmt -w first to auto-fix, then -l to fail on anything that remained dirty
-# (e.g. a file that couldn't be parsed).
-fmt-check: fmt
-	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "gofmt needs running on:"; echo "$$out"; exit 1; fi
-
-# vet: report suspicious constructs
-vet: generate
-	go vet ./...
-
-# vuln: scan dependencies and reachable code for known CVEs
-vuln:
-	go tool govulncheck ./...
-
-# check: format, vet, scan for known CVEs, and build
-check: fmt-check vet vuln build
-
-# tidy: prune go.mod / go.sum
-tidy:
-	go mod tidy
-
-# clean: remove the binary and generated templ code
-clean:
-	rm -f $(BINARY)
-	find internal -name '*_templ.go' -delete
-
-# test: run the Go test suite.
-# When the local Postgres isn't already running, spin it up and tear it down afterwards
-test: generate
-	@db_started=0; \
-	if ! nc -z localhost 5432 2>/dev/null; then \
-		docker compose up -d db --wait; \
-		db_started=1; \
-	fi; \
-	go test ./...; \
-	if [ "$$db_started" = "1" ]; then docker compose down; fi
-
-# setup-hooks: install the pre-push hook into .git/hooks/
-setup-hooks:
-	cp pre-push .git/hooks/pre-push
-	chmod +x .git/hooks/pre-push
-
-.PHONY: build generate dev prod cert deploy pull reload-prod migrate backup schema down volume-rm prune logs fetch fetch-curated fmt fmt-check vet vuln check tidy clean test setup-hooks
+.PHONY: setup-hooks dev build generate clean logs down prune volume-rm test check fmt fmt-check vet vuln tidy fetch fetch-curated deploy prod update-prod cert pull migrate backup restore schema
