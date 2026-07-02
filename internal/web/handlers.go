@@ -150,7 +150,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	token, err := auth.ExchangeCode(s.cfg, code)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: token exchange failed: %v\n", err)
-		http.Error(w, "Could not complete 42 authorization, please try syncing again", http.StatusBadGateway)
+		http.Error(w, "Could not complete 42 authorization, please try again. If this continues happening, please report it at https://github.com/EvAvKein/Fortytwode/issues", http.StatusBadGateway)
 		return
 	}
 
