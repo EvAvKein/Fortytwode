@@ -641,7 +641,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		d.SyncedAtISO = acc.FetchedAt.UTC().Format(time.RFC3339)
 		d.CanResync = s.canResync(r.Context(), acc)
 	}
-	render(w, r, pages.Page(d, s.viewerLogin(r)))
+	render(w, r, pages.Profile(d, s.viewerLogin(r)))
 }
 
 func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {
