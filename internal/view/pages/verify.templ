@@ -5,8 +5,8 @@ import "github.com/EvAvKein/Fortytwode/internal/routes"
 // VerifyPending tells an authenticated-but-unverified user to check their inbox,
 // and offers a resend plus an email-correction form (for typos or legacy
 // placeholder addresses). notice carries a success message, errMsg an error.
-templ VerifyPending(email string, errMsg string, notice string, viewerLogin string) {
-	@Layout("Verify your email", viewerLogin, "") {
+templ VerifyPending(email string, errMsg string, notice string) {
+	@Layout("Verify your email", "", "") {
 		<nav class="nav">
 			<form method="post" action={ routes.APILogOut.URL() } data-method={ routes.APILogOut.MethodLower() } class="inline margin-left-auto">
 				<button type="submit" class="button">Log out</button>
@@ -40,17 +40,21 @@ templ VerifyPending(email string, errMsg string, notice string, viewerLogin stri
 // VerifyResult is shown after the verification link is opened: success, or a
 // failure (invalid/expired token) with a path back to request a new link.
 templ VerifyResult(success bool, viewerLogin string) {
-	@Layout("Email verification", viewerLogin, "") {
-		<main id="main" class="centered">
-			if success {
+	if success {
+		@Layout("Email verification", viewerLogin, "") {
+			<main id="main" class="centered">
 				<h1>Email verified</h1>
 				<p class="good">Your email is confirmed — your account is ready.</p>
 				<a class="button" href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
-			} else {
+			</main>
+		}
+	} else {
+		@Layout("Email verification", "", "") {
+			<main id="main" class="centered">
 				<h1>Link invalid or expired</h1>
 				<p class="error">This verification link is no longer valid. Log in to request a fresh one.</p>
 				<a class="button" href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
-			}
-		</main>
+			</main>
+		}
 	}
 }

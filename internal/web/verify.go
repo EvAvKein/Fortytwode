@@ -152,7 +152,7 @@ func (s *Server) handleVerifyPending(w http.ResponseWriter, r *http.Request) {
 	case "rate-limited":
 		errMsg = "Too many request, wait a little before resending."
 	}
-	render(w, r, pages.VerifyPending(acc.Email, errMsg, notice, acc.FtLogin))
+	render(w, r, pages.VerifyPending(acc.Email, errMsg, notice))
 }
 
 // handleVerifyEmail consumes the token from the verification link. A valid,
@@ -222,7 +222,7 @@ func (s *Server) handleVerifyEmailChange(w http.ResponseWriter, r *http.Request)
 	newEmail := strings.TrimSpace(r.FormValue("email"))
 	if !validEmail(newEmail) {
 		renderStatus(w, r, http.StatusUnprocessableEntity,
-			pages.VerifyPending(acc.Email, "Enter a valid email address.", "", acc.FtLogin))
+			pages.VerifyPending(acc.Email, "Enter a valid email address.", ""))
 		return
 	}
 	if !s.verifyResendAllowed(w, r, acc) {
@@ -231,7 +231,7 @@ func (s *Server) handleVerifyEmailChange(w http.ResponseWriter, r *http.Request)
 	if err := s.store.UpdateEmail(r.Context(), acc.ID, newEmail); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
 			renderStatus(w, r, http.StatusUnprocessableEntity,
-				pages.VerifyPending(acc.Email, "That email is already in use.", "", acc.FtLogin))
+				pages.VerifyPending(acc.Email, "That email is already in use.", ""))
 			return
 		}
 		http.Error(w, "Could not update email", http.StatusInternalServerError)
