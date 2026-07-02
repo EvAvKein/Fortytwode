@@ -4,7 +4,7 @@ import "github.com/EvAvKein/Fortytwode/internal/routes"
 
 // SignupForm creates an account from the just-synced 42 data; errMsg is shown
 // when non-empty. When expired is true the synced data is gone, so the form is
-// replaced with a prompt to sync again.
+// replaced with a prompt to fetch again.
 templ SignupForm(errMsg string, expired bool, viewerLogin string) {
 	@Layout("Sign up", viewerLogin, "") {
 		<main id="main" class="centered">
@@ -12,11 +12,11 @@ templ SignupForm(errMsg string, expired bool, viewerLogin string) {
 			if expired {
 				<p class="error">{ errMsg }</p>
 				<div class="spaced-apart">
-					<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Sync again</a>
+					<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Fetch again</a>
 					<a href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
 				</div>
 			} else {
-				<p class="muted">Saves the 42 data you just synced to a profile you can share.</p>
+				<p class="muted">Saves the 42 data you just fetched to a profile you can share.</p>
 				if errMsg != "" {
 					<p class="error">{ errMsg }</p>
 				}

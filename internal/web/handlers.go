@@ -429,7 +429,7 @@ func (s *Server) jobFor(r *http.Request) (string, *job, bool) {
 
 func (s *Server) handleSignupForm(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.jobFor(r); !ok {
-		render(w, r, pages.SignupForm("Your sync expired. Please sync your 42 data again", true, ""))
+		render(w, r, pages.SignupForm("Your fetch expired. Please fetch your 42 data again", true, ""))
 		return
 	}
 	render(w, r, pages.SignupForm("", false, ""))
@@ -448,12 +448,12 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	}
 	jobID, j, ok := s.jobFor(r)
 	if !ok {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your sync expired. Please re-sync your 42 data", true, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your fetch expired. Please fetch your 42 data again", true, ""))
 		return
 	}
 	snap, ftID, ftLogin, done := j.result()
 	if !done {
-		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your sync hasn't finished yet, wait for it to complete", false, ""))
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your fetch hasn't finished yet, wait for it to complete", false, ""))
 		return
 	}
 	id, err := s.store.CreateAccount(r.Context(), email, ftID, ftLogin, snap)

@@ -11,14 +11,21 @@ import (
 // script swaps for sign-in if the 42 identity turned out to be registered. The
 // script is loaded from the assets package (deferred, so the DOM it drives exists).
 templ Syncing(viewerLogin string, profileLogin string) {
-	@Layout("Syncing…", viewerLogin, "") {
+	{{
+		verb := "Syncing"
+		retry := "Sync again"
+		if viewerLogin == "" {
+			verb, retry = "Fetching", "Fetch again"
+		}
+	}}
+	@Layout(verb+"…", viewerLogin, "") {
 		<main id="main" class="centered">
-			<h1>Syncing your 42 data…</h1>
+			<h1>{ verb } your 42 data…</h1>
 			<div class="progress">
 				<div id="bar" class="progress-bar" data-stream-path={ routes.APISyncStream.Path }></div>
 			</div>
 			<p id="label" class="muted">Starting…</p>
-			<p id="slow-banner" class="notice hidden">We're experiencing heavy traffic right now: Your sync is slower than usual, hang tight!</p>
+			<p id="slow-banner" class="notice hidden">We're experiencing heavy traffic right now: fetching is slower than usual, hang tight!</p>
 			<p id="error" class="error hidden"></p>
 			<div id="sync-success-actions" class="hidden">
 				<div class="spaced-apart">
@@ -35,7 +42,7 @@ templ Syncing(viewerLogin string, profileLogin string) {
 				</div>
 			</div>
 			<div id="sync-error-actions" class="spaced-apart hidden">
-				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) } data-sync-trigger data-sync-hide>Sync again</a>
+				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) } data-sync-trigger data-sync-hide>{ retry }</a>
 				<span class="notice hidden" data-sync-notice role="status" aria-live="polite">Authenticating you with 42: this can take a few seconds, hang tight!</span>
 			</div>
 			<script src={ assets.SyncingSrc } defer></script>
