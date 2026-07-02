@@ -6,6 +6,9 @@
 	--text: #e6e8ee;
 	--muted: #8b90a0;
 	--accent: #00babc;
+	--notice: #f0c674;
+	--error: #ff7b7b;
+	--good: #5fd0a0;
 }
 
 * {
@@ -667,13 +670,13 @@ ol.evals {
 	color: var(--muted);
 }
 .error {
-	color: #ff7b7b;
+	color: var(--error);
 }
 .notice {
-	color: #f0c674;
+	color: var(--notice);
 }
 .good {
-	color: #5fd0a0;
+	color: var(--good);
 }
 .hidden {
 	display: none !important;
