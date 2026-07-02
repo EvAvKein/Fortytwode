@@ -7,6 +7,10 @@ RESET="\033[0m"
 
 echo $CYAN "Running pre-push checks..." $RESET
 
+# Snapshot tracked-file changes so we can detect if the checks (gofmt -w, templ fmt) rewrite any source.
+# Comparing before/after avoids tripping on pre-existing unstaged changes.
+DIFF_BEFORE="$(git diff)"
+
 echo $CYAN "Running make check..." $RESET
 make check
 CHECK_EXIT=$?
@@ -17,6 +21,14 @@ TEST_EXIT=$?
 
 if [ $CHECK_EXIT -ne 0 ] || [ $TEST_EXIT -ne 0 ]; then
   echo $RED "Pre-push checks failed. Push aborted. (bypass with 'git push --no-verify')" $RESET
+  exit 1
+fi
+
+DIFF_AFTER="$(git diff)"
+if [ "$DIFF_BEFORE" != "$DIFF_AFTER" ]; then
+  echo $RED "Changes got applied to tracked files during pre-push checks." $RESET
+  echo $RED "These changes are NOT in your commits. Review, stage, and commit them (e.g. 'git commit --amend')," $RESET
+  echo $RED "then push again. (bypass with 'git push --no-verify')" $RESET
   exit 1
 fi
 
