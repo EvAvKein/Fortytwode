@@ -638,9 +638,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	d.Owner = owner
 	d.Login = acc.FtLogin
 	if owner {
-		if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
-			d.LastSynced = "Synced: " + ts
-		}
+		d.SyncedAtISO = acc.FetchedAt.UTC().Format(time.RFC3339)
 		d.CanResync = s.canResync(r.Context(), acc)
 	}
 	render(w, r, pages.Page(d, s.viewerLogin(r)))
@@ -860,9 +858,7 @@ func (s *Server) handleConfirmEmailConsume(w http.ResponseWriter, r *http.Reques
 // settingsData renders the current account/visibility state into the template's shape.
 func (s *Server) settingsData(ctx context.Context, acc store.Account, saved bool) model.SettingsData {
 	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email, CanResync: s.canResync(ctx, acc)}
-	if ts := view.FormatSyncTime(acc.FetchedAt); ts != "" {
-		d.LastSynced = "Synced: " + ts
-	}
+	d.SyncedAtISO = acc.FetchedAt.UTC().Format(time.RFC3339)
 	for _, t := range view.ToggleableSections {
 		d.Toggles = append(d.Toggles, model.SettingsToggle{
 			Key:     t.Key,

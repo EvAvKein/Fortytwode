@@ -13,9 +13,7 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 			if d.CanResync {
 				<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
 			}
-			if d.LastSynced != "" {
-				<span class="muted">{ d.LastSynced }</span>
-			}
+			<span class="muted">Synced: <time data-synced datetime={ d.SyncedAtISO }></time></span>
 			<form method="post" action={ routes.APILogOut.URL() } data-method={ routes.APILogOut.MethodLower() } class="inline margin-left-auto">
 				<button type="submit" class="button">Log out</button>
 			</form>

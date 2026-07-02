@@ -40,6 +40,26 @@ document.addEventListener("click", function printButtonHandler(e) {
 	}
 });
 
+// Render each server-sent UTC sync timestamp in the viewer's local timezone.
+// The element ships empty; the server only provides the machine-readable
+// datetime attribute, so this fills in the visible text.
+(function localizeSyncTime() {
+	for (const el of document.querySelectorAll("time[data-synced]")) {
+		const iso = el.getAttribute("datetime");
+		if (!iso) continue;
+		const d = new Date(iso);
+		if (isNaN(d.getTime())) continue;
+		const now = new Date();
+		const sameDay =
+			d.getFullYear() === now.getFullYear() &&
+			d.getMonth() === now.getMonth() &&
+			d.getDate() === now.getDate();
+		el.textContent = sameDay
+			? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+			: d.toLocaleDateString();
+	}
+})();
+
 // Intercept forms that need methods the browser cannot send natively
 // (DELETE, PATCH). The form still falls back to POST if JS is disabled.
 document.addEventListener(

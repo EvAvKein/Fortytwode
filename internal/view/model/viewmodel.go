@@ -115,9 +115,9 @@ type PageData struct {
 	Profile *Profile
 	Sections
 	Owner      bool   // viewer owns this profile -> show the owner nav
-	Login      string // 42 login of the profile being viewed (for links)
-	LastSynced string // formatted "Synced: ..." timestamp for owners; empty otherwise
-	CanResync  bool   // true when the owner's cooldown has expired
+	Login       string // 42 login of the profile being viewed (for links)
+	SyncedAtISO string // RFC3339 UTC sync time for owners, localized client-side
+	CanResync   bool   // true when the owner's cooldown has expired
 }
 
 // SettingsToggle is one section's public/private switch on the settings page.
@@ -135,7 +135,7 @@ type SettingsData struct {
 	Toggles           []SettingsToggle
 	Login             string
 	Saved             bool
-	LastSynced        string // formatted "Synced: ..." timestamp
+	SyncedAtISO       string // RFC3339 UTC sync time, localized client-side; empty if never synced
 	CanResync         bool   // true when the owner's cooldown has expired
 	Email             string
 	EmailError        string

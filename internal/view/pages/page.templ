@@ -16,9 +16,7 @@ templ Page(d model.PageData, viewerLogin string) {
 				if d.CanResync {
 					<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
 				}
-				if d.LastSynced != "" {
-					<span class="muted">{ d.LastSynced }</span>
-				}
+				<span class="muted">Synced: <time data-synced datetime={ d.SyncedAtISO }></time></span>
 				<a href={ templ.SafeURL(routes.PageSettings) } class="margin-left-auto">Settings</a>
 			</nav>
 		}
