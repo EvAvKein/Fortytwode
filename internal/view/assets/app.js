@@ -105,3 +105,30 @@ document.addEventListener(
 	},
 	true,
 );
+
+// Navigating to 42's authorize page can take several seconds once the browser
+// actually leaves this document, and that wait is on 42's side (our own
+// /api/v1/sync handler does no work before redirecting).
+// Swap the trigger for a status notice instead.
+// This only mutates the DOM after the click; navigation itself proceeds normally.
+(function setupSyncNotice() {
+	function setSyncNoticeVisible(visible) {
+		for (const el of document.querySelectorAll("[data-sync-hide]")) {
+			el.classList.toggle("hidden", visible);
+		}
+		for (const el of document.querySelectorAll("[data-sync-notice]")) {
+			el.classList.toggle("hidden", !visible);
+		}
+	}
+
+	document.addEventListener("click", function showSyncNotice(e) {
+		if (e.target.closest("[data-sync-trigger]")) setSyncNoticeVisible(true);
+	});
+
+	// If the browser restores this page from bfcache (e.g. the user hits Back
+	// from 42's site), it would come back exactly as left: trigger hidden, notice
+	// stuck showing, no way to retry. This undoes the above mutation in that case.
+	window.addEventListener("pageshow", function resetSyncNoticeOnRestore(e) {
+		if (e.persisted) setSyncNoticeVisible(false);
+	});
+})();

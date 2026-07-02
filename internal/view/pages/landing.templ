@@ -22,8 +22,9 @@ templ Landing(viewerLogin string, stats store.Stats) {
 				Get all your 42 data with the press of a button, and download it as JSON.
 				Optionally, create an account to create a profile you can share!
 			</p>
-			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) }>Get my 42 data</a>
-			<p class="muted">
+			<a class="button bright" href={ templ.SafeURL(routes.API42Sync.URL()) } data-sync-trigger data-sync-hide>Get my 42 data</a>
+			<p class="notice hidden" data-sync-notice role="status" aria-live="polite">Authenticating you with 42: this can take a few seconds, hang tight!</p>
+			<p class="muted" data-sync-hide>
 				Have an account? <a href={ templ.SafeURL(routes.PageLogin) }>Log in</a>
 			</p>
 		</main>

@@ -11,7 +11,8 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 	@Layout("Settings", viewerLogin, "") {
 		<nav class="nav">
 			if d.CanResync {
-				<a href={ templ.SafeURL(routes.API42Sync.URL()) }>Re-sync</a>
+				<a href={ templ.SafeURL(routes.API42Sync.URL()) } data-sync-trigger data-sync-hide>Re-sync</a>
+				<span class="notice hidden" data-sync-notice role="status" aria-live="polite">Authenticating you with 42: this can take a few seconds, hang tight!</span>
 			}
 			<span class="muted">Synced: <time data-synced datetime={ d.SyncedAtISO }></time></span>
 			<form method="post" action={ routes.APILogOut.URL() } data-method={ routes.APILogOut.MethodLower() } class="inline margin-left-auto">

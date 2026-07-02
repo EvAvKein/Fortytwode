@@ -35,7 +35,8 @@ templ Syncing(viewerLogin string, profileLogin string) {
 				</div>
 			</div>
 			<div id="sync-error-actions" class="spaced-apart hidden">
-				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) }>Sync again</a>
+				<a class="button" href={ templ.SafeURL(routes.API42Sync.URL()) } data-sync-trigger data-sync-hide>Sync again</a>
+				<span class="notice hidden" data-sync-notice role="status" aria-live="polite">Authenticating you with 42: this can take a few seconds, hang tight!</span>
 			</div>
 			<script src={ assets.SyncingSrc } defer></script>
 		</main>
