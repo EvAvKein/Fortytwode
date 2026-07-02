@@ -34,7 +34,7 @@ func (s *Server) actionLink(page, token string) string {
 // issueVerification mints a fresh token, persists its hash and the send time, and
 // fires the email asynchronously. A dropped send isn't fatal — the pending page's
 // resend button covers it — so a send error is logged, not surfaced.
-func (s *Server) issueVerification(ctx context.Context, accountID int64, email string) {
+func (s *Server) issueVerification(ctx context.Context, accountID int64, email, login string) {
 	token := randomToken()
 	if err := s.store.SetVerifyToken(ctx, accountID, tokenHash(token), time.Now()); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: set verify token for account %d: %v\n", accountID, err)
@@ -42,7 +42,7 @@ func (s *Server) issueVerification(ctx context.Context, accountID int64, email s
 	}
 	link := s.actionLink(routes.PageVerifyEmail, token)
 	go func() {
-		if err := s.email.SendVerification(context.Background(), email, link); err != nil {
+		if err := s.email.SendVerification(context.Background(), email, login, link); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: send verification email for account %d: %v\n", accountID, err)
 		}
 	}()
@@ -205,7 +205,7 @@ func (s *Server) handleVerifyResend(w http.ResponseWriter, r *http.Request) {
 	if !s.verifyResendAllowed(w, r, acc) {
 		return
 	}
-	s.issueVerification(r.Context(), acc.ID, acc.Email)
+	s.issueVerification(r.Context(), acc.ID, acc.Email, acc.FtLogin)
 	http.Redirect(w, r, routes.PageVerifyPending+"?resent=1", http.StatusFound)
 }
 
@@ -237,6 +237,6 @@ func (s *Server) handleVerifyEmailChange(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Could not update email", http.StatusInternalServerError)
 		return
 	}
-	s.issueVerification(r.Context(), acc.ID, newEmail)
+	s.issueVerification(r.Context(), acc.ID, newEmail, acc.FtLogin)
 	http.Redirect(w, r, routes.PageVerifyPending+"?email="+url.QueryEscape(newEmail)+"&updated=1", http.StatusFound)
 }

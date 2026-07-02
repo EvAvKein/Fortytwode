@@ -475,7 +475,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not start session", http.StatusInternalServerError)
 		return
 	}
-	s.issueVerification(r.Context(), id, email)
+	s.issueVerification(r.Context(), id, email, ftLogin)
 	http.Redirect(w, r, routes.PageVerifyPending, http.StatusFound)
 }
 

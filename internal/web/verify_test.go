@@ -41,7 +41,7 @@ func (f *fakeSender) record(to, subj, link string) {
 	f.mu.Unlock()
 }
 
-func (f *fakeSender) SendVerification(_ context.Context, to, link string) error {
+func (f *fakeSender) SendVerification(_ context.Context, to, login, link string) error {
 	f.record(to, "Verify your Fortytwode email", link)
 	return nil
 }

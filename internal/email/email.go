@@ -24,7 +24,7 @@ const resendEndpoint = "https://api.resend.com/emails"
 // Sender sends Fortytwode's transactional emails. It is an interface so handlers
 // can be tested with a fake recorder and so a missing API key degrades to a no-op.
 type Sender interface {
-	SendVerification(ctx context.Context, to, link string) error
+	SendVerification(ctx context.Context, to, login, link string) error
 	SendLogin(ctx context.Context, to, link string) error
 	SendEmailChange(ctx context.Context, to, link string) error
 	// SendEmailChangeNotice tells the previous address that the account's email was
@@ -53,8 +53,8 @@ func New(cfg config.Config) Sender {
 // developer can complete verification locally, and never errors.
 type logSender struct{}
 
-func (logSender) SendVerification(_ context.Context, to, link string) error {
-	fmt.Fprintf(os.Stderr, "email (not sent, no API key): verification for %s -> %s\n", to, link)
+func (logSender) SendVerification(_ context.Context, to, login, link string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): verification for %s (%s) -> %s\n", to, login, link)
 	return nil
 }
 
@@ -86,8 +86,8 @@ type resendSender struct {
 	http    *http.Client
 }
 
-func (s *resendSender) SendVerification(ctx context.Context, to, link string) error {
-	return s.send(ctx, to, "Verify your Fortytwode email", verificationText(link), verificationHTML(link))
+func (s *resendSender) SendVerification(ctx context.Context, to, login, link string) error {
+	return s.send(ctx, to, "Verify your Fortytwode email", verificationText(login, link), verificationHTML(login, link))
 }
 
 func (s *resendSender) SendLogin(ctx context.Context, to, link string) error {
@@ -141,14 +141,15 @@ func (s *resendSender) send(ctx context.Context, to, subject, text, html string)
 	return nil
 }
 
-func verificationText(link string) string {
-	return "Welcome to Fortytwode!\n\n" +
+func verificationText(login, link string) string {
+	return "Welcome to Fortytwode, " + login + "!\n\n" +
 		"Confirm your email address by opening this link:\n" + link + "\n\n" +
 		"The link is valid for 24 hours. If you didn't create an account, you can ignore this email."
 }
 
-func verificationHTML(link string) string {
-	return `<p>Welcome to Fortytwode!</p>` +
+func verificationHTML(login, link string) string {
+	esc := html.EscapeString(login)
+	return `<p>Welcome to Fortytwode, <strong>` + esc + `</strong>!</p>` +
 		`<p>Confirm your email address by clicking the link below:</p>` +
 		`<p><a href="` + link + `">Verify my email</a></p>` +
 		`<p>The link is valid for 24 hours. If you didn't create an account, you can ignore this email.</p>`
