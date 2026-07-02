@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/http"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -286,12 +287,22 @@ func (s *Server) clearCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, Secure: s.secure, MaxAge: -1})
 }
 
-// validEmail is a deliberately loose syntactic check: a non-empty local part, an
-// "@", and a dotted domain. Actual deliverability is confirmed out-of-band by the
-// email-verification flow (an account stays unverified until it clicks a link
-// delivered to this address), so a strict format check here would add no real
-// protection and only risk rejecting valid addresses.
+// validEmail accepts only a bare RFC 5322 address - net/mail must parse it, and
+// the parsed address must round-trip to the input, which rejects display-name
+// forms, comments, whitespace, and control characters - with a dotted domain and
+// within the 254-byte SMTP limit. Actual deliverability is still confirmed
+// out-of-band by the email-verification flow (an account stays unverified until
+// it clicks a link delivered to this address); parsing up-front just rejects
+// header-injection-shaped and obviously undeliverable input before it reaches
+// the mailer.
 func validEmail(email string) bool {
-	at := strings.IndexByte(email, '@')
-	return at > 0 && at < len(email)-1 && strings.Contains(email[at+1:], ".")
+	if len(email) > 254 {
+		return false
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return false
+	}
+	at := strings.LastIndexByte(email, '@')
+	return strings.Contains(email[at+1:], ".")
 }
