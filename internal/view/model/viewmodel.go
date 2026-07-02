@@ -114,7 +114,7 @@ type PageData struct {
 	IsError bool
 	Profile *Profile
 	Sections
-	Owner      bool   // viewer owns this profile -> show the owner nav
+	Owner       bool   // viewer owns this profile -> show the owner nav
 	Login       string // 42 login of the profile being viewed (for links)
 	SyncedAtISO string // RFC3339 UTC sync time for owners, localized client-side
 	CanResync   bool   // true when the owner's cooldown has expired
