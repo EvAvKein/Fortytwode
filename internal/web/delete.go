@@ -69,6 +69,9 @@ func (s *Server) handleRequestDelete(w http.ResponseWriter, r *http.Request) {
 // email. It validates the token read-only (so a bad link shows the failure page
 // and a prefetch erases nothing); the page's button POSTs to handleConfirmDelete.
 func (s *Server) handleDeletePending(w http.ResponseWriter, r *http.Request) {
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		renderStatus(w, r, http.StatusBadRequest, pages.DeleteFailed(s.viewerLogin(r)))
@@ -76,6 +79,7 @@ func (s *Server) handleDeletePending(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.store.PeekDeleteToken(r.Context(), tokenHash(token), deleteTokenTTL); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			s.recordBadToken(r)
 			renderStatus(w, r, http.StatusBadRequest, pages.DeleteFailed(s.viewerLogin(r)))
 			return
 		}
@@ -93,6 +97,9 @@ func (s *Server) handleConfirmDelete(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.FormValue("token")
 	if token == "" {
 		renderStatus(w, r, http.StatusBadRequest, pages.DeleteFailed(s.viewerLogin(r)))
@@ -103,6 +110,7 @@ func (s *Server) handleConfirmDelete(w http.ResponseWriter, r *http.Request) {
 	cur, loggedIn := s.currentAccount(r)
 	acc, err := s.store.DeleteByToken(r.Context(), tokenHash(token), deleteTokenTTL)
 	if errors.Is(err, store.ErrNotFound) {
+		s.recordBadToken(r)
 		renderStatus(w, r, http.StatusBadRequest, pages.DeleteFailed(s.viewerLogin(r)))
 		return
 	}

@@ -107,6 +107,7 @@ func newTestServer(st *store.Store) (*Server, *fakeSender) {
 		verifyResends:       newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
 		emailChangeRequests: newAttemptLimiter[int64](maxEmailChangeRequests, emailChangeRequestWindow),
 		deleteRequests:      newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
+		tokenAttempts:       newAttemptLimiter[string](maxTokenAttempts, tokenAttemptWindow),
 		email:               fs,
 	}
 	return s, fs

@@ -522,6 +522,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // stays off this cross-site-triggerable GET (that's what defeats login CSRF). The
 // interstitial's button POSTs to handleLoginConsume, which is where login happens.
 func (s *Server) handleLoginCallback(w http.ResponseWriter, r *http.Request) {
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		s.badLink(w, r)
@@ -529,6 +532,7 @@ func (s *Server) handleLoginCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := s.store.PeekLoginToken(r.Context(), tokenHash(token), loginTokenTTL); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
+			s.recordBadToken(r)
 			s.badLink(w, r)
 			return
 		}
@@ -545,6 +549,9 @@ func (s *Server) handleLoginConsume(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.FormValue("token")
 	if token == "" {
 		s.badLink(w, r)
@@ -552,6 +559,7 @@ func (s *Server) handleLoginConsume(w http.ResponseWriter, r *http.Request) {
 	}
 	acc, err := s.store.ConsumeLoginToken(r.Context(), tokenHash(token), loginTokenTTL)
 	if errors.Is(err, store.ErrNotFound) {
+		s.recordBadToken(r)
 		s.badLink(w, r)
 		return
 	}
@@ -782,6 +790,9 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 // other sessions). The interstitial's button POSTs to handleConfirmEmailConsume,
 // which is where the address actually changes. A bad/expired link shows the failure page.
 func (s *Server) handleConfirmEmail(w http.ResponseWriter, r *http.Request) {
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		s.badLink(w, r)
@@ -789,6 +800,7 @@ func (s *Server) handleConfirmEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	acc, pendingEmail, err := s.store.PeekEmailChange(r.Context(), tokenHash(token), emailChangeTokenTTL)
 	if errors.Is(err, store.ErrNotFound) {
+		s.recordBadToken(r)
 		s.badLink(w, r)
 		return
 	}
@@ -809,6 +821,9 @@ func (s *Server) handleConfirmEmailConsume(w http.ResponseWriter, r *http.Reques
 	if s.rejectCrossSite(w, r) {
 		return
 	}
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.FormValue("token")
 	if token == "" {
 		s.badLink(w, r)
@@ -816,6 +831,7 @@ func (s *Server) handleConfirmEmailConsume(w http.ResponseWriter, r *http.Reques
 	}
 	acc, oldEmail, err := s.store.ConsumeEmailChange(r.Context(), tokenHash(token), emailChangeTokenTTL)
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrDuplicate) {
+		s.recordBadToken(r)
 		s.badLink(w, r)
 		return
 	}

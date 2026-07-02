@@ -73,6 +73,34 @@ func TestValidEmail(t *testing.T) {
 	}
 }
 
+func TestTokenAttemptLimiter(t *testing.T) {
+	t.Parallel()
+	s := &Server{tokenAttempts: newAttemptLimiter[string](maxTokenAttempts, tokenAttemptWindow)}
+	req := httptest.NewRequest(http.MethodGet, routes.PageVerifyEmail+"?token=bogus", nil)
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+
+	for i := range maxTokenAttempts {
+		if !s.tokenAttemptAllowed(httptest.NewRecorder(), req) {
+			t.Fatalf("attempt %d should be allowed", i)
+		}
+		s.recordBadToken(req)
+	}
+	rec := httptest.NewRecorder()
+	if s.tokenAttemptAllowed(rec, req) {
+		t.Error("client over the cap should be blocked")
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want 429", rec.Code)
+	}
+
+	// The cap is per-client: a different IP is unaffected.
+	other := httptest.NewRequest(http.MethodGet, routes.PageVerifyEmail+"?token=bogus", nil)
+	other.Header.Set("X-Real-IP", "5.6.7.8")
+	if !s.tokenAttemptAllowed(httptest.NewRecorder(), other) {
+		t.Error("a different client should still be allowed")
+	}
+}
+
 func TestStreamEmitsDone(t *testing.T) {
 	t.Parallel()
 	s := &Server{jobs: newJobRegistry()}

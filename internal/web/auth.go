@@ -59,6 +59,14 @@ const (
 	deleteRequestWindow = 15 * time.Minute
 )
 
+// Per-client cap on invalid emailed-token redemptions (verify, login,
+// email-change, and deletion links). Tokens are 256-bit random, so guessing is
+// very unlikely even without this, but it's worth having this brute-force barrier.
+const (
+	maxTokenAttempts   = 10
+	tokenAttemptWindow = 15 * time.Minute
+)
+
 // randomToken returns 32 bytes of crypto-random hex, used for session ids, job
 // ids, the OAuth state, and the email login/verification tokens.
 func randomToken() string {
@@ -96,6 +104,29 @@ func (s *Server) clientKey(r *http.Request, sessionValid bool) string {
 		return ""
 	}
 	return "ip:" + ip
+}
+
+// tokenAttemptAllowed gates every handler that peeks or consumes an emailed-link
+// token: once a client has presented maxTokenAttempts invalid tokens within the
+// window, it answers 429 and reports false. Keyed by clientKey without a session
+// (these visitors are typically anonymous), so like the sync cap it fails open
+// when the client can't be identified — Nginx's per-IP limit still applies.
+func (s *Server) tokenAttemptAllowed(w http.ResponseWriter, r *http.Request) bool {
+	key := s.clientKey(r, false)
+	if key == "" || s.tokenAttempts.allowed(key) {
+		return true
+	}
+	http.Error(w, "Too many attempts, wait a little before trying again", http.StatusTooManyRequests)
+	return false
+}
+
+// recordBadToken charges an invalid emailed-link token against the client's
+// tokenAttemptAllowed budget. Only presented-but-unmatched tokens count; a
+// missing token or a successful redemption spends nothing.
+func (s *Server) recordBadToken(r *http.Request) {
+	if key := s.clientKey(r, false); key != "" {
+		s.tokenAttempts.recordFailed(key)
+	}
 }
 
 // currentAccount resolves the logged-in account from the session cookie, if any.

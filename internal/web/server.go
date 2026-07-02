@@ -34,6 +34,7 @@ type Server struct {
 	verifyResends       *attemptLimiter[int64]  // per-account verification-email resend cap
 	emailChangeRequests *attemptLimiter[int64]  // per-account email-change request cap
 	deleteRequests      *attemptLimiter[int64]  // per-account deletion-confirmation request cap
+	tokenAttempts       *attemptLimiter[string] // per-client invalid emailed-token cap
 	email               email.Sender            // transactional email (login/verification/deletion links)
 }
 
@@ -53,6 +54,7 @@ func Serve(cfg config.Config, st *store.Store) error {
 		verifyResends:       newAttemptLimiter[int64](maxVerifyResends, verifyResendWindow),
 		emailChangeRequests: newAttemptLimiter[int64](maxEmailChangeRequests, emailChangeRequestWindow),
 		deleteRequests:      newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
+		tokenAttempts:       newAttemptLimiter[string](maxTokenAttempts, tokenAttemptWindow),
 		email:               sender,
 	}
 
@@ -76,6 +78,7 @@ func Serve(cfg config.Config, st *store.Store) error {
 			s.verifyResends.prune()
 			s.emailChangeRequests.prune()
 			s.deleteRequests.prune()
+			s.tokenAttempts.prune()
 		}
 	}()
 

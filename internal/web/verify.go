@@ -159,6 +159,9 @@ func (s *Server) handleVerifyPending(w http.ResponseWriter, r *http.Request) {
 // unexpired token marks the account verified; anything else renders the failure
 // page (with a path back to request a new link).
 func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	if !s.tokenAttemptAllowed(w, r) {
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		s.badLink(w, r)
@@ -166,6 +169,7 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	acc, err := s.store.VerifyByToken(r.Context(), tokenHash(token), verifyTokenTTL)
 	if errors.Is(err, store.ErrNotFound) {
+		s.recordBadToken(r)
 		s.badLink(w, r)
 		return
 	}
