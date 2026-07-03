@@ -65,6 +65,7 @@ func TestParseEmail(t *testing.T) {
 	cases := map[string]bool{
 		"a@b.co": true, "user@school.42.fr": true, "first.last+tag@b.co": true,
 		"nope": false, "no@at": false, "@b.co": false, "a@.co": false,
+		"a@localhost":                      false, // domain must contain a dot
 		"a b@c.d":                          false, // whitespace
 		"Name <a@b.co>":                    false, // display-name form must not slip through
 		"a@b.co\r\nBcc: x":                 false, // header-injection-shaped

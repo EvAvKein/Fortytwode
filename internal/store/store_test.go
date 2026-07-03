@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,6 +51,9 @@ func TestAccountsAndSessions(t *testing.T) {
 	t.Run("AccountByEmail", func(t *testing.T) {
 		if acc, err := st.AccountByEmail(ctx, email); err != nil || acc.ID != id {
 			t.Errorf("acc=%+v err=%v", acc, err)
+		}
+		if acc, err := st.AccountByEmail(ctx, strings.ToUpper(email)); err != nil || acc.ID != id {
+			t.Errorf("case-variant lookup: acc=%+v err=%v", acc, err)
 		}
 		if _, err := st.AccountByEmail(ctx, "missing-"+email); !errors.Is(err, store.ErrNotFound) {
 			t.Errorf("missing email: got %v, want ErrNotFound", err)
