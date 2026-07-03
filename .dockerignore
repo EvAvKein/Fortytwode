@@ -2,6 +2,7 @@
 .git/
 fortytwode
 output/
+.token.json
 *.md
 .env
 .env.example
