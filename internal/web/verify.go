@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/routes"
@@ -223,8 +222,8 @@ func (s *Server) handleVerifyEmailChange(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	newEmail := strings.TrimSpace(r.FormValue("email"))
-	if !validEmail(newEmail) {
+	newEmail, ok := parseEmail(r.FormValue("email"))
+	if !ok {
 		renderStatus(w, r, http.StatusUnprocessableEntity,
 			pages.VerifyPending(acc.Email, "Enter a valid email address.", ""))
 		return

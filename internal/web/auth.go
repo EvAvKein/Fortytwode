@@ -287,22 +287,29 @@ func (s *Server) clearCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, Secure: s.secure, MaxAge: -1})
 }
 
-// validEmail accepts only a bare RFC 5322 address - net/mail must parse it, and
-// the parsed address must round-trip to the input, which rejects display-name
-// forms, comments, whitespace, and control characters - with a dotted domain and
-// within the 254-byte SMTP limit. Actual deliverability is still confirmed
-// out-of-band by the email-verification flow (an account stays unverified until
-// it clicks a link delivered to this address); parsing up-front just rejects
+// parseEmail trims and lowercases a submitted address so every write and
+// comparison uses one canonical form. This is what makes the database's
+// exact-case UNIQUE constraint effectively case-insensitive: lookups lowercase
+// both sides (AccountByEmail), so every stored email MUST be lowercase or a
+// case-variant duplicate could shadow an address at login. It then accepts only
+// a bare RFC 5322 address - net/mail must parse it, and the parsed address must
+// round-trip to the input, which rejects display-name forms, comments,
+// whitespace, and control characters - with a dotted domain and within the
+// 254-byte SMTP limit. Actual deliverability is still confirmed out-of-band by
+// the email-verification flow (an account stays unverified until it clicks a
+// link delivered to this address); parsing up-front just rejects
 // header-injection-shaped and obviously undeliverable input before it reaches
-// the mailer.
-func validEmail(email string) bool {
+// the mailer. The normalized address is always returned, even when invalid, so
+// callers can redisplay what the user submitted.
+func parseEmail(email string) (string, bool) {
+	email = strings.ToLower(strings.TrimSpace(email))
 	if len(email) > 254 {
-		return false
+		return email, false
 	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
-		return false
+		return email, false
 	}
 	at := strings.LastIndexByte(email, '@')
-	return strings.Contains(email[at+1:], ".")
+	return email, strings.Contains(email[at+1:], ".")
 }

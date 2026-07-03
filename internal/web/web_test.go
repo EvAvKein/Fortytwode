@@ -60,7 +60,7 @@ func TestSyncRejectsCrossSite(t *testing.T) {
 	}
 }
 
-func TestValidEmail(t *testing.T) {
+func TestParseEmail(t *testing.T) {
 	t.Parallel()
 	cases := map[string]bool{
 		"a@b.co": true, "user@school.42.fr": true, "first.last+tag@b.co": true,
@@ -71,8 +71,8 @@ func TestValidEmail(t *testing.T) {
 		strings.Repeat("a", 250) + "@b.co": false, // over the SMTP length limit
 	}
 	for in, want := range cases {
-		if got := validEmail(in); got != want {
-			t.Errorf("validEmail(%q) = %v, want %v", in, got, want)
+		if _, got := parseEmail(in); got != want {
+			t.Errorf("parseEmail(%q) = %v, want %v", in, got, want)
 		}
 	}
 }

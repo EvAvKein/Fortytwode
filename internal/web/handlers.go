@@ -441,8 +441,8 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
-	email := strings.TrimSpace(r.FormValue("email"))
-	if !validEmail(email) {
+	email, ok := parseEmail(r.FormValue("email"))
+	if !ok {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Enter a valid email address", false, ""))
 		return
 	}
@@ -491,8 +491,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.rejectCrossSite(w, r) {
 		return
 	}
-	email := strings.TrimSpace(r.FormValue("email"))
-	if !validEmail(email) {
+	email, ok := parseEmail(r.FormValue("email"))
+	if !ok {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.LoginForm("Enter a valid email address.", ""))
 		return
 	}
@@ -741,10 +741,10 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	newEmail := strings.TrimSpace(r.FormValue("email"))
+	newEmail, ok := parseEmail(r.FormValue("email"))
 	d := s.settingsData(r.Context(), acc, false)
 
-	if !validEmail(newEmail) {
+	if !ok {
 		d.Email = newEmail
 		d.EmailError = "Enter a valid email address"
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(d, acc.FtLogin))
