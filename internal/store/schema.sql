@@ -45,3 +45,11 @@ CREATE TABLE sync_cooldowns (
     ft_id bigint PRIMARY KEY,
     last_sync_at timestamp with time zone NOT NULL
 );
+
+CREATE INDEX accounts_delete_token_hash_idx ON accounts (delete_token_hash) WHERE (delete_token_hash IS NOT NULL);
+
+CREATE INDEX accounts_email_change_token_hash_idx ON accounts (email_change_token_hash) WHERE (email_change_token_hash IS NOT NULL);
+
+CREATE INDEX accounts_login_token_hash_idx ON accounts (login_token_hash) WHERE (login_token_hash IS NOT NULL);
+
+CREATE INDEX accounts_verify_token_hash_idx ON accounts (verify_token_hash) WHERE (verify_token_hash IS NOT NULL);

@@ -1,6 +1,8 @@
 // schema_prettify reads pg_dump --schema-only output from stdin and writes
 // compact SQL to stdout. Strips session settings, pg_dump metadata, and
-// collapses sequences into SERIAL with inlined constraints.
+// collapses sequences into SERIAL with inlined constraints. Standalone indexes
+// are kept (grouped after the tables) — some carry semantics the tables alone
+// don't show, e.g. the case-insensitive unique index on accounts(LOWER(email)).
 //
 // Usage: pg_dump ... | go run ./internal/store/schema_prettify
 package main
@@ -48,6 +50,7 @@ var (
 	reIsDash      = regexp.MustCompile(`^--$`)
 	reIsComment   = regexp.MustCompile(`^--`)
 	reEndParen    = regexp.MustCompile(`^\);`)
+	reIsIndex     = regexp.MustCompile(`^CREATE (UNIQUE )?INDEX `)
 )
 
 func main() {
@@ -161,12 +164,18 @@ func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*co
 	inCreate := false
 	currentTable := ""
 	prevEnd := false
-	var cols []string // columns of the current table, joined with commas at ");"
+	var cols []string    // columns of the current table, joined with commas at ");"
+	var indexes []string // standalone CREATE [UNIQUE] INDEX statements, emitted after the tables
 
 	for _, line := range lines {
 		switch {
 		case reIsHeader.MatchString(line):
 			ew.WriteString(line + "\n")
+
+		case reIsIndex.MatchString(line):
+			cleaned := strings.ReplaceAll(line, "public.", "")
+			cleaned = strings.ReplaceAll(cleaned, " USING btree", "")
+			indexes = append(indexes, cleaned)
 
 		case reIsSeq.MatchString(line), reIsAltSeq.MatchString(line),
 			reIsAlt.MatchString(line), reIsAddCon.MatchString(line),
@@ -209,5 +218,8 @@ func writePrettified(w io.Writer, lines []string, cons map[string]map[string]*co
 			return ew.err
 		}
 	}
-	return nil
+	for _, idx := range indexes {
+		ew.WriteString("\n" + idx + "\n")
+	}
+	return ew.err
 }
