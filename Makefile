@@ -127,8 +127,23 @@ deploy: down cert prod
 
 # prod: (re)start the production stack (TLS + rate-limiting Nginx) on :80/:443, detached.
 # Assumes a cert already exists - use `make deploy` for the first run
-prod:
+prod: cloudflare-ips
 	docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up --build -d
+
+# cloudflare-ips: regenerate deploy/nginx/cloudflare_realip.conf (gitignored) from
+# Cloudflare's published ranges. The prod Nginx trusts CF-Connecting-IP only from
+# these, so a failed/garbled fetch must abort the deploy rather than ship an
+# empty trust list; a previously generated file survives the failure.
+CF_REALIP := deploy/nginx/cloudflare_realip.conf
+cloudflare-ips:
+	@curl -fsS https://www.cloudflare.com/ips-v4 > $(CF_REALIP).tmp4
+	@curl -fsS https://www.cloudflare.com/ips-v6 > $(CF_REALIP).tmp6
+	@test -s $(CF_REALIP).tmp4 && test -s $(CF_REALIP).tmp6
+	@awk 'NF { if ($$0 !~ /^[0-9a-fA-F.:\/]+$$/) { print "unexpected line: " $$0 > "/dev/stderr"; exit 1 } print "set_real_ip_from " $$0 ";" }' \
+		$(CF_REALIP).tmp4 $(CF_REALIP).tmp6 > $(CF_REALIP).tmp
+	@mv $(CF_REALIP).tmp $(CF_REALIP)
+	@rm -f $(CF_REALIP).tmp4 $(CF_REALIP).tmp6
+	@echo "wrote $(CF_REALIP) ($$(wc -l < $(CF_REALIP)) ranges)"
 
 # update-prod: pull remote updates, migrate the database, and relaunch prod
 update-prod: pull migrate prod
@@ -176,4 +191,4 @@ schema:
 	  && echo "Schema written to internal/store/schema.sql" \
 	  || { echo "Failed to regenerate schema" >&2; exit 1; }
 
-.PHONY: setup-hooks dev build generate clean logs down prune volume-rm test check fmt fmt-check vet vuln tidy fetch fetch-curated deploy prod update-prod cert pull migrate backup restore schema
+.PHONY: setup-hooks dev build generate clean logs down prune volume-rm test check fmt fmt-check vet vuln tidy fetch fetch-curated deploy prod cloudflare-ips update-prod cert pull migrate backup restore schema

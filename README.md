@@ -62,6 +62,8 @@ make dev                  # build + run the whole stack, watching for edits
 The Postgres schema is applied on the first connection.
 
 The production site sits behind Cloudflare for DNS, CDN, and connection security.
+The host's firewall (a DigitalOcean Cloud Firewall, since Docker's published ports bypass ufw) must allow 80/443 only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/), or the origin can be reached directly and Cloudflare bypassed. The prod Nginx trusts `CF-Connecting-IP` from those same ranges to recover real client IPs (the range list is fetched at deploy time by `make prod` via `make cloudflare-ips`, not versioned).
+Cert renewal (HTTP-01) then arrives via Cloudflare's proxy, so verify `make deploy` still renews after firewall changes.
 
 ### Commands
 
