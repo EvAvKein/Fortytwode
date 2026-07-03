@@ -44,6 +44,7 @@ var (
 	APIAccountCreate        = Route{Method: "POST", Path: "/account"}
 	APIAccountDownload      = Route{Method: "GET", Path: "/account/download"}
 	APIAccountVisibility    = Route{Method: "PATCH", Path: "/account/visibility"}
+	APIAccountTheme         = Route{Method: "PATCH", Path: "/account/theme"}
 	APIAccountEmail         = Route{Method: "PATCH", Path: "/account/email"}
 	APIAccountEmailConfirm  = Route{Method: "POST", Path: "/account/email/confirm"}
 	APIAccountDelete        = Route{Method: "DELETE", Path: "/account"}

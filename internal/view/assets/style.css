@@ -1,14 +1,26 @@
 :root {
-	color-scheme: dark; /* match native elements (e.g. scrollbars) to the dark theme */
-	--bg: #0f1115;
-	--card: #171a21;
-	--border: #272b35;
-	--text: #e6e8ee;
-	--muted: #8b90a0;
-	--accent: #00babc;
-	--notice: #f0c674;
-	--error: #ff7b7b;
-	--good: #5fd0a0;
+	color-scheme: light dark; /* follow the OS unless an override pins it */
+	--bg: light-dark(#f6f7f9, #0f1115);
+	--card: light-dark(#ffffff, #171a21);
+	--border: light-dark(#d7dbe2, #272b35);
+	--text: light-dark(#1a1d24, #e6e8ee);
+	--muted: light-dark(#5b6070, #8b90a0);
+	--accent: light-dark(#006466, #00babc);
+	--notice: light-dark(#8a6d00, #f0c674);
+	--error: light-dark(#c0392b, #ff7b7b);
+	--good: light-dark(#1f8a5b, #5fd0a0);
+	--inset: light-dark(#eef0f4, #0c0e12); /* sunken panels: stat cards, rows, inputs, count pills */
+	--hover: light-dark(#e9ecf2, #1c2029); /* table row hover */
+	--avatar: light-dark(#d7dbe2, #222); /* avatar image placeholder */
+	--on-accent: light-dark(#ffffff, #04282a); /* text/marks sitting on an --accent fill */
+}
+
+/* A logged-in account's explicit override */
+:root[data-theme="light"] {
+	color-scheme: light;
+}
+:root[data-theme="dark"] {
+	color-scheme: dark;
 }
 
 * {
@@ -121,7 +133,7 @@ header.profile {
 			height: 80px;
 			border-radius: 50%;
 			object-fit: cover;
-			background: #222;
+			background: var(--avatar);
 		}
 
 		h1 {
@@ -158,7 +170,7 @@ header.profile {
 	.stat-card {
 		flex: 1 1 auto;
 		min-width: 120px;
-		background: #0c0e12;
+		background: var(--inset);
 		border: 1px solid var(--border);
 		border-radius: 8px;
 		padding: 0.5rem 0.75rem;
@@ -225,7 +237,7 @@ header.profile {
 			flex-wrap: wrap;
 			gap: 0.5rem;
 			align-items: baseline;
-			background: #0c0e12;
+			background: var(--inset);
 			border: 1px solid var(--border);
 			border-radius: 8px;
 			padding: 0.4rem 0.75rem;
@@ -300,7 +312,7 @@ header.profile {
 			flex-direction: column;
 			gap: 0.15rem;
 			padding: 0.4rem 0.75rem;
-			background: #0c0e12;
+			background: var(--inset);
 			border: 1px solid var(--border);
 			border-radius: 8px;
 		}
@@ -366,7 +378,7 @@ main {
 	color: var(--muted);
 
 	&.error {
-		color: #ff7b7b;
+		color: var(--error);
 	}
 }
 
@@ -405,7 +417,7 @@ details {
 			color: var(--muted);
 			font-weight: 400;
 			font-size: 0.85rem;
-			background: #0c0e12;
+			background: var(--inset);
 			border: 1px solid var(--border);
 			padding: 0.1rem 0.55rem;
 			border-radius: 999px;
@@ -440,7 +452,7 @@ table {
 	}
 
 	tr:hover td {
-		background: #1c2029;
+		background: var(--hover);
 	}
 
 	th,
@@ -456,10 +468,10 @@ table {
 
 	td {
 		&.good {
-			color: #5fd0a0;
+			color: var(--good);
 		}
 		&.bad {
-			color: #ff7b7b;
+			color: var(--error);
 		}
 		&.muted {
 			color: var(--muted);
@@ -534,7 +546,7 @@ ol.evals {
 			color: var(--muted);
 
 			.bad {
-				color: #ff7b7b;
+				color: var(--error);
 			}
 
 			.sep {
@@ -606,7 +618,7 @@ ol.evals {
 			align-items: center;
 			justify-content: center;
 			background: var(--accent);
-			color: #04282a;
+			color: var(--on-accent);
 			font-size: 0.7rem;
 			font-weight: 700;
 			border-radius: 999px;
@@ -657,7 +669,7 @@ ol.evals {
 	}
 
 	.radar-index {
-		fill: #04282a;
+		fill: var(--on-accent);
 		font-size: 12px;
 		font-weight: 700;
 		text-anchor: middle;
@@ -790,7 +802,7 @@ main.landing {
 
 	&.bright {
 		background: var(--accent);
-		color: #04282a;
+		color: var(--on-accent);
 	}
 
 	&.ft {
@@ -856,7 +868,7 @@ button {
 		padding: 0.5rem 0.6rem;
 		border-radius: 8px;
 		border: 1px solid var(--border);
-		background: #0c0e12;
+		background: var(--inset);
 		color: var(--text);
 		font: inherit;
 	}
@@ -881,7 +893,7 @@ button {
 
 .progress {
 	height: 14px;
-	background: #0c0e12;
+	background: var(--inset);
 	border: 1px solid var(--border);
 	border-radius: 999px;
 	overflow: hidden;
@@ -902,8 +914,8 @@ button {
 }
 
 button.danger {
-	border-color: #ff7b7b;
-	color: #ff7b7b;
+	border-color: var(--error);
+	color: var(--error);
 }
 
 @media print {

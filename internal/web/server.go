@@ -20,6 +20,7 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/email"
 	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/store"
+	"github.com/EvAvKein/Fortytwode/internal/view/viewctx"
 	"github.com/a-h/templ"
 )
 
@@ -117,6 +118,7 @@ func (server *Server) routes() http.Handler {
 	api.HandleFunc(routes.APIAccountCreate.Pattern(), server.handleSignup)
 	api.HandleFunc(routes.APIAccountDownload.Pattern(), server.handleDownloadSaved)
 	api.HandleFunc(routes.APIAccountVisibility.Pattern(), server.handleSettings)
+	api.HandleFunc(routes.APIAccountTheme.Pattern(), server.handleTheme)
 	api.HandleFunc(routes.APIAccountEmail.Pattern(), server.handleSettingsEmail)
 	api.HandleFunc(routes.APIAccountEmailConfirm.Pattern(), server.handleConfirmEmailConsume)
 	api.HandleFunc(routes.APIAccountDelete.Pattern(), server.handleRequestDelete)
@@ -143,7 +145,33 @@ func (server *Server) routes() http.Handler {
 	registerAssets(pages) // fingerprinted /static/* stylesheet + scripts
 	pages.Handle(routes.APIPrefix()+"/", http.StripPrefix(routes.APIPrefix(), api))
 	pages.HandleFunc("/", server.handleNotFound)
-	return securityHeaders(pages)
+	return wrapWithMiddleware(pages, securityHeaders, server.themeContext)
+}
+
+// wrapWithMiddleware wraps h with the given middleware, applied outermost-first:
+// the first middleware listed runs first on the way in and, for response-
+// mutating middleware like securityHeaders, sets headers on every response.
+// Add site-wide middleware to the call in routes() rather than by nesting.
+func wrapWithMiddleware(h http.Handler, middleware ...func(http.Handler) http.Handler) http.Handler {
+	for i := len(middleware) - 1; i >= 0; i-- {
+		h = middleware[i](h)
+	}
+	return h
+}
+
+// themeContext resolves a logged-in account's explicit light/dark override and
+// carries it in the request context so the shared Layout can set data-theme on
+// <html>, without threading a parameter through every page component. Visitors
+// with no session cookie skip the lookup entirely (currentAccount returns early),
+// and a "system"/anonymous request carries "", leaving the theme to the OS.
+func (server *Server) themeContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if acc, ok := server.currentAccount(r); ok {
+			ctx = viewctx.WithTheme(ctx, viewctx.ParseTheme(acc.PreferredTheme))
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 // render writes a templ component as a 200 HTML response.

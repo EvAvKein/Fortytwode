@@ -19,7 +19,9 @@ CREATE TABLE accounts (
     login_sent_at timestamp with time zone,
     pending_email text,
     email_change_token_hash text,
-    email_change_sent_at timestamp with time zone
+    email_change_sent_at timestamp with time zone,
+    preferred_theme text,
+    CONSTRAINT accounts_preferred_theme_check CHECK ((preferred_theme = ANY (ARRAY['light'::text, 'dark'::text])))
 );
 
 CREATE TABLE schema_migrations (

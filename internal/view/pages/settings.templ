@@ -51,6 +51,25 @@ templ Settings(d model.SettingsData, viewerLogin string) {
 				}
 				<button type="submit" class="button">Restore defaults</button>
 			</form>
+			<h2>Theme</h2>
+			<form method="post" action={ routes.APIAccountTheme.URL() } data-method={ routes.APIAccountTheme.MethodLower() } class="form">
+				<fieldset>
+					<legend>Site appearance</legend>
+					<label class="check">
+						<input type="radio" name="theme" value="system" checked?={ d.PreferredTheme == "" }/>
+						System <span class="muted">(follow your device setting)</span>
+					</label>
+					<label class="check">
+						<input type="radio" name="theme" value="light" checked?={ d.PreferredTheme == "light" }/>
+						Light
+					</label>
+					<label class="check">
+						<input type="radio" name="theme" value="dark" checked?={ d.PreferredTheme == "dark" }/>
+						Dark
+					</label>
+				</fieldset>
+				<button type="submit" class="button">Save theme</button>
+			</form>
 			<h2>Account</h2>
 			<form method="post" action={ routes.APIAccountEmail.URL() } data-method={ routes.APIAccountEmail.MethodLower() } class="form">
 				if d.EmailPending != "" {

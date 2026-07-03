@@ -141,4 +141,5 @@ type SettingsData struct {
 	EmailError        string
 	EmailPending      string // address a confirmation link was just sent to (change not yet applied)
 	DeletionRequested bool
+	PreferredTheme    string // "light"/"dark" override, or "" to follow the OS (the "System" choice)
 }

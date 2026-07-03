@@ -21,6 +21,7 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/view"
 	"github.com/EvAvKein/Fortytwode/internal/view/model"
 	"github.com/EvAvKein/Fortytwode/internal/view/pages"
+	"github.com/EvAvKein/Fortytwode/internal/view/viewctx"
 )
 
 // syncCooldown is the minimum time between full data fetches for one 42 user.
@@ -692,6 +693,45 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	render(w, r, pages.Settings(s.settingsData(r.Context(), acc, true), acc.FtLogin))
 }
 
+// handleTheme saves the account's light/dark theme override. It follows the
+// visibility form's shape (session-gated, cross-site rejected); "system" (or any
+// unrecognised value) clears the override so the account follows the OS. It
+// redirects back to Settings so the page reloads and re-renders under the new
+// theme (the middleware picks it up from the freshly-saved account).
+func (s *Server) handleTheme(w http.ResponseWriter, r *http.Request) {
+	acc, ok := s.currentAccount(r)
+	if !ok {
+		renderStatus(w, r, http.StatusUnauthorized, pages.LoginForm("Please log in to continue", ""))
+		return
+	}
+	if s.gateUnverified(w, r, acc) {
+		return
+	}
+	if s.rejectCrossSite(w, r) {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
+		return
+	}
+	// The JS interceptor submits the form as multipart/form-data; parse it
+	// explicitly (as parseVisibilityForm does) or the field comes back empty.
+	if strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			renderStatus(w, r, http.StatusUnprocessableEntity, pages.Settings(s.settingsData(r.Context(), acc, false), acc.FtLogin))
+			return
+		}
+	}
+	// ParseTheme keeps only "light"/"dark"; anything else (including "system")
+	// normalises to ThemeAuto (""), which UpdatePreferredTheme writes as NULL.
+	theme := viewctx.ParseTheme(r.FormValue("theme"))
+	if err := s.store.UpdatePreferredTheme(r.Context(), acc.ID, string(theme)); err != nil {
+		http.Error(w, "Could not save settings", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, routes.PageSettings, http.StatusSeeOther)
+}
+
 func parseVisibilityForm(r *http.Request) (bool, map[string]bool, error) {
 	if err := r.ParseForm(); err != nil {
 		return false, nil, err
@@ -873,7 +913,7 @@ func (s *Server) handleConfirmEmailConsume(w http.ResponseWriter, r *http.Reques
 
 // settingsData renders the current account/visibility state into the template's shape.
 func (s *Server) settingsData(ctx context.Context, acc store.Account, saved bool) model.SettingsData {
-	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email, CanResync: s.canResync(ctx, acc)}
+	d := model.SettingsData{IsPublic: acc.IsPublic, Login: acc.FtLogin, Saved: saved, Email: acc.Email, CanResync: s.canResync(ctx, acc), PreferredTheme: acc.PreferredTheme}
 	d.SyncedAtISO = acc.FetchedAt.UTC().Format(time.RFC3339)
 	for _, t := range view.ToggleableSections {
 		d.Toggles = append(d.Toggles, model.SettingsToggle{

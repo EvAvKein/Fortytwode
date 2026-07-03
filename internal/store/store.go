@@ -76,29 +76,31 @@ func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 // Account is an app account plus its 42 snapshot and visibility settings.
 type Account struct {
-	ID            int64
-	Email         string
-	FtID          int64
-	FtLogin       string
-	Data          map[string]json.RawMessage
-	FetchedAt     time.Time
-	IsPublic      bool            // profile viewable without an account
-	Visibility    map[string]bool // per-section public overrides (missing -> code default)
-	EmailVerified bool            // email ownership confirmed via the verification link
+	ID             int64
+	Email          string
+	FtID           int64
+	FtLogin        string
+	Data           map[string]json.RawMessage
+	FetchedAt      time.Time
+	IsPublic       bool            // profile viewable without an account
+	Visibility     map[string]bool // per-section public overrides (missing -> code default)
+	EmailVerified  bool            // email ownership confirmed via the verification link
+	PreferredTheme string          // "light"/"dark" override, or "" to follow the OS (stored NULL)
 }
 
 // The column list shared by the account lookups, plain and table-aliased (for
-// the sessions join).
+// the sessions join). preferred_theme is read through COALESCE so its NULL
+// ("no override") scans into the plain-string PreferredTheme field as "".
 const (
-	accountCols  = "id, email, ft_id, ft_login, data, fetched_at, is_public, visibility, email_verified"
-	accountColsA = "a.id, a.email, a.ft_id, a.ft_login, a.data, a.fetched_at, a.is_public, a.visibility, a.email_verified"
+	accountCols  = "id, email, ft_id, ft_login, data, fetched_at, is_public, visibility, email_verified, COALESCE(preferred_theme, '')"
+	accountColsA = "a.id, a.email, a.ft_id, a.ft_login, a.data, a.fetched_at, a.is_public, a.visibility, a.email_verified, COALESCE(a.preferred_theme, '')"
 )
 
 // scanAccount reads the accountCols (in order) from a row.
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var data, vis []byte
-	if err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified); err != nil {
+	if err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &a.PreferredTheme); err != nil {
 		return Account{}, err
 	}
 	if err := populateAccountByJsonb(&a, data, vis); err != nil {
@@ -203,6 +205,16 @@ func (s *Store) UpdateEmail(ctx context.Context, accountID int64, email string) 
 	return err
 }
 
+// UpdatePreferredTheme sets the account's theme override. An empty theme clears
+// the override (stored NULL), so the account falls back to following the OS; a
+// non-empty value must be "light" or "dark" (the column's CHECK enforces this).
+func (s *Store) UpdatePreferredTheme(ctx context.Context, accountID int64, theme string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE accounts SET preferred_theme = NULLIF($2, '') WHERE id = $1`,
+		accountID, theme)
+	return err
+}
+
 // SetVerifyToken stores the active token's sha256 hex (never the token itself) and
 // its issue time, marks the account unverified, and supersedes any previous token.
 // sentAt backs the link's TTL (the resend cooldown is a separate in-memory limiter).
@@ -297,7 +309,7 @@ func (s *Store) PeekEmailChange(ctx context.Context, tokenHash string, ttl time.
 	var a Account
 	var data, vis []byte
 	var pendingEmail string
-	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &pendingEmail)
+	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &a.PreferredTheme, &pendingEmail)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, "", ErrNotFound
 	}
@@ -332,7 +344,7 @@ func (s *Store) ConsumeEmailChange(ctx context.Context, tokenHash string, ttl ti
 	var a Account
 	var data, vis []byte
 	var oldEmail string
-	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &oldEmail)
+	err := row.Scan(&a.ID, &a.Email, &a.FtID, &a.FtLogin, &data, &a.FetchedAt, &a.IsPublic, &vis, &a.EmailVerified, &a.PreferredTheme, &oldEmail)
 	if isUniqueViolation(err) {
 		return Account{}, "", ErrDuplicate
 	}
