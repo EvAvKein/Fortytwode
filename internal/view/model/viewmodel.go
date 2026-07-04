@@ -28,6 +28,7 @@ type TableSection struct {
 // EvalSection is a curated, collapsible panel rendered as a list of eval cards.
 type EvalSection struct {
 	PanelHeader
+	Note  string // muted caption after the stats
 	Evals []EvalItem
 }
 

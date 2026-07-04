@@ -96,11 +96,11 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.EvalsReceived, "scale_teams_as_corrected", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations received", false, load[snapshot.Eval](snaps, "scale_teams_as_corrected"))
+		return buildEvals("Evaluations received", false, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrected"))
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.EvalsGiven, "scale_teams_as_corrector", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations given", true, load[snapshot.Eval](snaps, "scale_teams_as_corrector"))
+		return buildEvals("Evaluations given", true, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrector"))
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.CorrectionPoints, "correction_point_historics", owner, vis, func() (model.TableSection, bool) {
@@ -289,14 +289,20 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 // buildEvals renders one side of peer evaluations as cards. Participant logins are
 // never stored, so instead of naming the other party each card surfaces the feedback
 // that concerns the owner: on "received" the corrector's write-up (Comment); on "given"
-// the rating + comment students left on the owner's correction. Truancy is flagged.
-func buildEvals(title string, given bool, evs []snapshot.Eval) (model.EvalSection, bool) {
+// the rating + comment students left on the owner's correction. Both sides are words
+// *about* the owner, not by them, so the summary line attributes the source (keyed on
+// login). Truancy is flagged.
+func buildEvals(title string, given bool, login string, evs []snapshot.Eval) (model.EvalSection, bool) {
 	if len(evs) == 0 {
 		return model.EvalSection{}, false
 	}
 	sort.Slice(evs, func(i, j int) bool { return evs[i].BeginAt > evs[j].BeginAt })
 
-	sec := model.EvalSection{PanelHeader: model.PanelHeader{Title: title, Count: len(evs)}}
+	note := "feedback by " + login + "'s evaluators"
+	if given {
+		note = "feedback for " + login + "'s evaluations"
+	}
+	sec := model.EvalSection{PanelHeader: model.PanelHeader{Title: title, Count: len(evs)}, Note: note}
 	for _, e := range evs {
 		feedback, rating := e.Comment, ""
 		if given {

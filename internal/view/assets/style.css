@@ -431,6 +431,23 @@ details {
 			font-size: 0.85rem;
 			margin: 0.1rem 0 0.7rem;
 		}
+
+		.eval-overview {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.4rem;
+			align-items: baseline;
+			margin: 0.1rem 0 0.7rem;
+
+			.stat {
+				margin: 0;
+			}
+
+			.sep,
+			.stat-note {
+				color: var(--muted);
+			}
+		}
 	}
 }
 

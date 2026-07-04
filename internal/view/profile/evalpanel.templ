@@ -19,9 +19,15 @@ templ EvalPanel(s model.EvalSection) {
 			<span class="count">{ strconv.Itoa(s.Count) }</span>
 		</summary>
 		<div class="body">
-			if s.Summary != "" {
-				<div class="stat">{ s.Summary }</div>
-			}
+			<div class="eval-overview">
+				if s.Summary != "" {
+					<div class="stat">{ s.Summary }</div>
+				}
+				if s.Note != "" {
+					<span class="sep">·</span>
+					<span class="stat-note">{ s.Note }</span>
+				}
+			</div>
 			@EvalList(s.Evals)
 		</div>
 	</details>
