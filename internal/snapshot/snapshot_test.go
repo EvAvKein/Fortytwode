@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A raw scale_team carrying third-party identities (corrector, corrected
@@ -150,6 +151,131 @@ func TestCurateResolvesEvalProjectName(t *testing.T) {
 				t.Errorf("project: got %q, want %q", evals[0].Project, tc.want)
 			}
 		})
+	}
+}
+
+func TestCuratePreservesEvalProjectPath(t *testing.T) {
+	t.Parallel()
+	// Curate keeps the raw gitlab path verbatim (the authoritative piscine signal); the
+	// classification itself happens at render, so no pool metadata is needed here.
+	cases := []struct {
+		name       string
+		gitlabPath string // empty -> field omitted
+		want       string
+	}{
+		{"piscine path preserved", "pedago_world/c-piscine/c-piscine-c-00", "pedago_world/c-piscine/c-piscine-c-00"},
+		{"cursus path preserved", "pedago_world/42-cursus/inner-circle/minitalk", "pedago_world/42-cursus/inner-circle/minitalk"},
+		{"absent path stays empty", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			team := `"project_id": 1`
+			if tc.gitlabPath != "" {
+				team += `, "project_gitlab_path": ` + mustJSON(tc.gitlabPath)
+			}
+			raw := `[{"begin_at": "x", "flag": {}, "team": {` + team + `}}]`
+			in := map[string]json.RawMessage{"scale_teams_as_corrector": json.RawMessage(raw)}
+			out := Curate(in)
+			var evals []Eval
+			if err := json.Unmarshal(out["scale_teams_as_corrector"], &evals); err != nil {
+				t.Fatalf("unmarshal curated: %v", err)
+			}
+			if evals[0].ProjectPath != tc.want {
+				t.Errorf("ProjectPath = %q, want %q", evals[0].ProjectPath, tc.want)
+			}
+		})
+	}
+}
+
+func TestPiscineGraded(t *testing.T) {
+	t.Parallel()
+	poolTrue := func(string) bool { return true }
+	poolFalse := func(string) bool { return false } // owner past their own pool
+	cases := []struct {
+		name        string
+		projectPath string
+		inPool      func(string) bool
+		want        bool
+	}{
+		// The path is authoritative in both directions and beats the window. Foreign piscine
+		// (out of pool but a piscine path) is still piscine; a cursus path stays cursus even
+		// when its date lands inside the pool window.
+		{"piscine path, out of pool", "pedago_world/c-piscine/c-piscine-c-00", poolFalse, true},
+		{"cursus path suppresses in-pool window", "pedago_world/42-cursus/inner-circle/minitalk", poolTrue, false},
+		// Path absent -> the pool-month window classifies (owner's own piscine).
+		{"no path, in pool window", "", poolTrue, true},
+		{"no path, out of pool window", "", poolFalse, false},
+		{"no path, nil classifier", "", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Eval{ProjectPath: tc.projectPath, BeginAt: "2024-07-15T10:00:00Z"}.PiscineGraded(tc.inPool)
+			if got != tc.want {
+				t.Errorf("PiscineGraded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseMonth(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want time.Month
+		ok   bool
+	}{
+		{"July", time.July, true},
+		{"  august ", time.August, true},
+		{"DECEMBER", time.December, true},
+		{"", 0, false},
+		{"smarch", 0, false},
+		{"7", 0, false},
+	}
+	for _, c := range cases {
+		got, ok := parseMonth(c.in)
+		if ok != c.ok || (ok && got != c.want) {
+			t.Errorf("parseMonth(%q) = (%v, %v), want (%v, %v)", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestPiscineByPool(t *testing.T) {
+	t.Parallel()
+	iso := func(y int, m time.Month, d int) string {
+		return time.Date(y, m, d, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	}
+	cases := []struct {
+		name            string
+		poolMonth, year string
+		beginAt         string
+		wantNil         bool // classifier itself is nil (unusable pool metadata)
+		want            bool
+	}{
+		{"month before pool", "July", "2024", iso(2024, time.June, 15), false, true},
+		{"during pool month", "July", "2024", iso(2024, time.July, 3), false, true},
+		{"month after pool", "July", "2024", iso(2024, time.August, 20), false, true},
+		{"two months after is out", "July", "2024", iso(2024, time.September, 1), false, false},
+		{"two months before is out", "July", "2024", iso(2024, time.May, 31), false, false},
+		{"december pool wraps to january", "December", "2024", iso(2025, time.January, 10), false, true},
+		{"january pool wraps to december", "January", "2025", iso(2024, time.December, 20), false, true},
+		{"empty pool -> nil classifier", "", "", iso(2024, time.July, 3), true, false},
+		{"bad year -> nil classifier", "July", "notayear", iso(2024, time.July, 3), true, false},
+		{"unparseable beginAt is not piscine", "July", "2024", "x", false, false},
+	}
+	for _, c := range cases {
+		classify := PiscineByPool(c.poolMonth, c.year)
+		if c.wantNil {
+			if classify != nil {
+				t.Errorf("%s: classifier should be nil", c.name)
+			}
+			continue
+		}
+		if classify == nil {
+			t.Fatalf("%s: classifier unexpectedly nil", c.name)
+		}
+		if got := classify(c.beginAt); got != c.want {
+			t.Errorf("%s: classify(%q) = %v, want %v", c.name, c.beginAt, got, c.want)
+		}
 	}
 }
 

@@ -78,7 +78,7 @@ type EvalItem struct {
 	Project  string // project name, or "—"
 	Team     string // distinctive team name shown beside the project; "" when generic
 	Date     string // ymd(BeginAt)
-	Mark     Cell   // dashInt(FinalMark) + markTone
+	Mark     Cell   // dashInt(FinalMark) + evalMarkTone
 	Flag     Cell   // flag name (+ "· truant") + tone
 	Rating   string // stars() for "given" evals, "" otherwise
 	Feedback string // full text; "" -> muted placeholder in the template

@@ -71,11 +71,30 @@ func toneIf(cond bool, tone string) string {
 	return ""
 }
 
-// markTone reddens a failing final mark of 0 or below (e.g. a -42 cheating
-// penalty), matching how negative flags are flagged red. A nil (missing) mark
-// stays neutral.
-func markTone(mark *int) string {
+// projectMarkTone reddens a project's failing final mark of 0 or below (e.g. a -42
+// cheating penalty), matching how negative flags are flagged red; the Projects table
+// shows pass/fail via its own Result column, so the mark itself only flags non-positive
+// scores. A nil (missing) mark stays neutral. (Evals use evalMarkTone's pass-bar rule.)
+func projectMarkTone(mark *int) string {
 	return toneIf(mark != nil && *mark <= 0, "bad")
+}
+
+// A project's pass bar depends on its type: 50/100 for C-Piscine days, 80/100 for cursus
+// projects. 42 publishes no per-project pass bar, so these are approximations: they fit
+// where my own correction marks tended to split, close enough absent an official bar.
+const piscinePassBar, cursusPassBar = 50, 80
+
+func passBar(piscine bool) int {
+	if piscine {
+		return piscinePassBar
+	}
+	return cursusPassBar
+}
+
+// evalMarkTone reddens a mark below its project's pass bar (50 piscine / 80 cursus).
+// Subsumes the old ≤0 case (0 < 50). A nil mark stays neutral.
+func evalMarkTone(mark *int, piscine bool) string {
+	return toneIf(mark != nil && *mark < passBar(piscine), "bad")
 }
 
 // ymd keeps just the date portion of an ISO-8601 timestamp.

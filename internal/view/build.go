@@ -95,12 +95,16 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 		return buildProjects(load[snapshot.Project](snaps, "projects_users"))
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
+	// Pool-month classifier, the piscine-grading fallback for evals whose project path is
+	// absent (partial syncs without a gitlab path). See snapshot.Eval.PiscineGraded.
+	inPool := snapshot.PiscineByPool(me.PoolMonth, me.PoolYear)
+
 	includeSection(&d.Sections.EvalsReceived, "scale_teams_as_corrected", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations received", false, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrected"))
+		return buildEvals("Evaluations received", false, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrected"), inPool)
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.EvalsGiven, "scale_teams_as_corrector", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations given", true, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrector"))
+		return buildEvals("Evaluations given", true, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrector"), inPool)
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.CorrectionPoints, "correction_point_historics", owner, vis, func() (model.TableSection, bool) {
@@ -183,7 +187,7 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		if a.BeginAt != b.BeginAt {
 			return a.BeginAt > b.BeginAt
 		}
-		if ap, bp := isPiscineCursus(a.Name), isPiscineCursus(b.Name); ap != bp {
+		if ap, bp := snapshot.IsPiscine(a.Name), snapshot.IsPiscine(b.Name); ap != bp {
 			return bp // non-piscine outranks piscine
 		}
 		return a.Level > b.Level
@@ -208,13 +212,6 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		}
 	}
 	return prof
-}
-
-// isPiscineCursus reports whether a cursus name denotes a piscine. Kept local to the view
-// package so the cursus-ordering change stays independent of the eval-piscine work (which
-// has its own snapshot.isPiscine); dedupe once that lands and exports a shared helper.
-func isPiscineCursus(name string) bool {
-	return strings.Contains(strings.ToLower(name), "piscine")
 }
 
 func buildContact(p snapshot.Profile) (model.ContactSection, bool) {
@@ -298,7 +295,7 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 		}
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: p.Name},
-			{Text: dashInt(p.FinalMark), Tone: markTone(p.FinalMark)},
+			{Text: dashInt(p.FinalMark), Tone: projectMarkTone(p.FinalMark)},
 			result,
 			{Text: ymd(p.When), Tone: "muted"},
 		})
@@ -313,7 +310,7 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 // the rating + comment students left on the owner's correction. Both sides are words
 // *about* the owner, not by them, so the summary line attributes the source (keyed on
 // login). Truancy is flagged.
-func buildEvals(title string, given bool, login string, evs []snapshot.Eval) (model.EvalSection, bool) {
+func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inPool func(beginAt string) bool) (model.EvalSection, bool) {
 	if len(evs) == 0 {
 		return model.EvalSection{}, false
 	}
@@ -332,6 +329,9 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval) (mo
 				rating = stars(*e.Rating)
 			}
 		}
+		// Classify piscine-grading (project path, else pool-month window)
+		// to select the pass bar the mark is toned against.
+		piscine := e.PiscineGraded(inPool)
 		flag := model.Cell{Text: e.FlagName, Tone: toneIf(!e.FlagPositive, "bad")}
 		if e.Truant {
 			flag = model.Cell{Text: strings.TrimSpace(e.FlagName + " · truant"), Tone: "bad"}
@@ -346,7 +346,7 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval) (mo
 			Project:  orDash(project),
 			Team:     team,
 			Date:     ymd(e.BeginAt),
-			Mark:     model.Cell{Text: dashInt(e.FinalMark), Tone: markTone(e.FinalMark)},
+			Mark:     model.Cell{Text: dashInt(e.FinalMark), Tone: evalMarkTone(e.FinalMark, piscine)},
 			Flag:     flag,
 			Rating:   rating,
 			Feedback: strings.TrimSpace(feedback),

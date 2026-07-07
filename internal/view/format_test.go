@@ -70,3 +70,27 @@ func TestIn(t *testing.T) {
 		}
 	}
 }
+
+func TestEvalMarkTone(t *testing.T) {
+	t.Parallel()
+	i := func(n int) *int { return &n }
+	cases := []struct {
+		name    string
+		mark    *int
+		piscine bool
+		want    string
+	}{
+		{"piscine pass at bar", i(50), true, ""},
+		{"piscine pass above", i(55), true, ""},
+		{"piscine fail below bar", i(40), true, "bad"},
+		{"cursus fail below bar", i(78), false, "bad"},
+		{"cursus pass at bar", i(80), false, ""},
+		{"zero always fails", i(0), true, "bad"},
+		{"nil stays neutral", nil, false, ""},
+	}
+	for _, c := range cases {
+		if got := evalMarkTone(c.mark, c.piscine); got != c.want {
+			t.Errorf("%s: evalMarkTone(%v, %v) = %q, want %q", c.name, c.mark, c.piscine, got, c.want)
+		}
+	}
+}

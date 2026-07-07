@@ -11,7 +11,9 @@ import (
 	"cmp"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/api42"
 )
@@ -79,12 +81,14 @@ type Project struct {
 }
 
 // Eval is one peer evaluation, stripped of every participant's login. It keeps the
-// project name (resolved from the team's project_id), the outcome (mark/flag), the
-// corrector's write-up (Comment), the peer rating left on it (Rating/FeedbackComment,
-// author dropped), and whether a truancy occurred. Team holds the team's name only
-// when it's distinctive (see genericTeamName).
+// project name (resolved from the team's project_id) and its gitlab ProjectPath (the
+// authoritative piscine signal, classified at render — see PiscineGraded), the outcome
+// (mark/flag), the corrector's write-up (Comment), the peer rating left on it
+// (Rating/FeedbackComment, author dropped), and whether a truancy occurred. Team holds
+// the team's name only when it's distinctive (see genericTeamName).
 type Eval struct {
 	Project         string `json:"project,omitempty"`
+	ProjectPath     string `json:"project_path,omitempty"`
 	Team            string `json:"team,omitempty"`
 	FinalMark       *int   `json:"final_mark"`
 	FlagName        string `json:"flag"`
@@ -134,8 +138,8 @@ type CorrectionPoint struct {
 func Curate(raw map[string]json.RawMessage) map[string]json.RawMessage {
 	out := map[string]json.RawMessage{}
 
-	// /me is special: it yields both the curated profile and the titles list. The
-	// owner's own login is kept; everyone else's is scrubbed from evaluations.
+	// /me is special: it yields both the curated profile and the titles list.
+	// The owner's own login is kept; everyone else's is scrubbed from evaluations.
 	ownerLogin := ""
 	if rawMe, ok := raw["me"]; ok {
 		var me api42.Me
@@ -214,6 +218,67 @@ func projectSlug(p *string) string {
 		return s[i+1:]
 	}
 	return s
+}
+
+// IsPiscine reports whether s contains a piscine marker (case-insensitive), matching any
+// "piscine" variant (c-piscine, regional/discovery piscines, older/future naming). Used for
+// both gitlab project paths and cursus names.
+func IsPiscine(s string) bool {
+	return strings.Contains(strings.ToLower(s), "piscine")
+}
+
+// PiscineGraded reports whether an eval is graded on the piscine pass bar (50 vs the cursus
+// 80). This is a property of the project *type*, not of the owner's own piscine. The gitlab
+// path is authoritative in both directions when present (a piscine day's display name like
+// "C 00" carries no signal, so the path is the only reliable classifier): a piscine path is
+// true even for a foreign piscine — e.g. an active student correcting a current pisciner's
+// project — and a cursus path is false even for an eval dated inside the owner's pool window.
+// Only when the path is absent does the owner's pool-month window (inPool) classify by
+// BeginAt. The distinct "was this from the owner's own piscine" question is inPool(BeginAt)
+// alone (owner's own piscine evals always fall inside that window).
+func (e Eval) PiscineGraded(inPool func(beginAt string) bool) bool {
+	if e.ProjectPath != "" {
+		return IsPiscine(e.ProjectPath)
+	}
+	return inPool != nil && inPool(e.BeginAt)
+}
+
+var monthByName = map[string]time.Month{
+	"january": time.January, "february": time.February, "march": time.March,
+	"april": time.April, "may": time.May, "june": time.June, "july": time.July,
+	"august": time.August, "september": time.September, "october": time.October,
+	"november": time.November, "december": time.December,
+}
+
+// parseMonth resolves a month name (42's pool_month, e.g. "July") to a time.Month,
+// case-insensitively. ok is false for anything unrecognised.
+func parseMonth(name string) (time.Month, bool) {
+	m, ok := monthByName[strings.ToLower(strings.TrimSpace(name))]
+	return m, ok
+}
+
+// PiscineByPool returns a predicate reporting whether an eval that began at beginAt falls in
+// the owner's C-Piscine window: the stated pool month plus the month on either side (piscines
+// straddle month boundaries). It returns nil when the pool metadata is missing/unparseable,
+// so callers can leave piscine-ness unknown. The window is a half-open [start, end) interval;
+// out-of-range month numbers passed to time.Date normalize across year boundaries, so Dec/Jan
+// pools need no special-casing.
+func PiscineByPool(poolMonth, poolYear string) func(beginAt string) bool {
+	m, okM := parseMonth(poolMonth)
+	y, errY := strconv.Atoi(strings.TrimSpace(poolYear))
+	if !okM || errY != nil {
+		return nil
+	}
+	start := time.Date(y, m-1, 1, 0, 0, 0, 0, time.UTC) // first day of the month before
+	end := time.Date(y, m+2, 1, 0, 0, 0, 0, time.UTC)   // first day of the month after next
+	return func(beginAt string) bool {
+		t, err := time.Parse(time.RFC3339, beginAt)
+		if err != nil {
+			return false
+		}
+		t = t.UTC()
+		return !t.Before(start) && t.Before(end)
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -309,6 +374,7 @@ func evalFrom(st api42.ScaleTeam, ownerLogin string, projectNames map[int]string
 
 	e := Eval{
 		Project:      cmp.Or(projectNames[st.Team.ProjectID], projectSlug(st.Team.ProjectGitlabPath)),
+		ProjectPath:  deref(st.Team.ProjectGitlabPath), // full path: the authoritative piscine signal, classified at render
 		Team:         team,
 		FinalMark:    st.FinalMark,
 		FlagName:     st.Flag.Name,

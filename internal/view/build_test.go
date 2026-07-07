@@ -143,6 +143,49 @@ func TestBuildVisibility(t *testing.T) {
 	})
 }
 
+// Eval marks are toned red below the project's pass bar (50 piscine / 80 cursus). The
+// project's gitlab path is the authoritative classifier and wins over the pool-month
+// fallback; the fallback only classifies evals whose path is absent.
+func TestBuildEvalMarkTone(t *testing.T) {
+	t.Parallel()
+	snaps := map[string]json.RawMessage{
+		"me": json.RawMessage(`{"login":"tester","pool_month":"July","pool_year":"2024"}`),
+		// project names are the lookup key below; marks all positive-flagged so the mark
+		// tone (not the flag) is what's under test.
+		"scale_teams_as_corrector": json.RawMessage(`[
+			{"project":"cursusFail","project_path":"pedago_world/42-cursus/inner-circle/minitalk","final_mark":78,"flag":"Ok","flag_positive":true,"begin_at":"2025-03-01T10:00:00Z"},
+			{"project":"pathBeatsPool","project_path":"pedago_world/42-cursus/inner-circle/minitalk","final_mark":78,"flag":"Ok","flag_positive":true,"begin_at":"2024-07-10T10:00:00Z"},
+			{"project":"piscinePass","project_path":"pedago_world/c-piscine/c-piscine-c-00","final_mark":55,"flag":"Ok","flag_positive":true,"begin_at":"2024-07-05T10:00:00Z"},
+			{"project":"poolFallbackFail","final_mark":45,"flag":"Ok","flag_positive":true,"begin_at":"2024-07-05T10:00:00Z"}
+		]`),
+	}
+	d := Build(snaps, true, nil)
+	if d.Sections.EvalsGiven == nil {
+		t.Fatal("expected EvalsGiven section")
+	}
+	tone := map[string]string{}
+	for _, e := range d.Sections.EvalsGiven.Evals {
+		tone[e.Project] = e.Mark.Tone
+	}
+	// 78 on a cursus-path project (bar 80) fails.
+	if tone["cursusFail"] != "bad" {
+		t.Errorf("cursus 78 should be red, got %q", tone["cursusFail"])
+	}
+	// 78 on a cursus path, dated inside the pool window: the path must win (bar 80 -> red),
+	// not the fallback (which would call the in-pool date piscine -> bar 50 -> pass).
+	if tone["pathBeatsPool"] != "bad" {
+		t.Errorf("cursus-path 78 should be red despite in-pool date, got %q", tone["pathBeatsPool"])
+	}
+	// 55 on a piscine-path day (bar 50) passes.
+	if tone["piscinePass"] != "" {
+		t.Errorf("piscine 55 should be neutral, got %q", tone["piscinePass"])
+	}
+	// 45 with no path, dated in the pool window: the fallback classifies it piscine (bar 50) -> red.
+	if tone["poolFallbackFail"] != "bad" {
+		t.Errorf("pathless in-pool 45 should be red, got %q", tone["poolFallbackFail"])
+	}
+}
+
 // The current cursus (Latest) is the most recently begun, not the highest-level: a
 // student early in 42cursus still ranks it above a completed, higher-level C Piscine.
 // Legacy snapshots synced without begin_at fall back to non-piscine-first, then level.
