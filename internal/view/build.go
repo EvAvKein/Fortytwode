@@ -172,8 +172,22 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		prof.Points = points
 	}
 
+	// Order cursus so the latest one leads. begin_at is the reliable signal:
+	// end_at is null for alumni and active students alike (see api42.CursusUser), and 42cursus always begins after the piscine.
+	// Snapshots persisted before begin_at was stored have it empty on every cursus and may
+	// never be re-synced, so two fallbacks decide those: a piscine is never the current
+	// cursus while a real cursus exists (non-piscine wins), then highest level.
 	cursus := append([]snapshot.Cursus(nil), p.Cursus...)
-	sort.Slice(cursus, func(i, j int) bool { return cursus[i].Level > cursus[j].Level })
+	sort.Slice(cursus, func(i, j int) bool {
+		a, b := cursus[i], cursus[j]
+		if a.BeginAt != b.BeginAt {
+			return a.BeginAt > b.BeginAt
+		}
+		if ap, bp := isPiscineCursus(a.Name), isPiscineCursus(b.Name); ap != bp {
+			return bp // non-piscine outranks piscine
+		}
+		return a.Level > b.Level
+	})
 	for i, cu := range cursus {
 		prof.Cursus = append(prof.Cursus, model.CursusRow{
 			Name:   cu.Name,
@@ -194,6 +208,13 @@ func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner boo
 		}
 	}
 	return prof
+}
+
+// isPiscineCursus reports whether a cursus name denotes a piscine. Kept local to the view
+// package so the cursus-ordering change stays independent of the eval-piscine work (which
+// has its own snapshot.isPiscine); dedupe once that lands and exports a shared helper.
+func isPiscineCursus(name string) bool {
+	return strings.Contains(strings.ToLower(name), "piscine")
 }
 
 func buildContact(p snapshot.Profile) (model.ContactSection, bool) {

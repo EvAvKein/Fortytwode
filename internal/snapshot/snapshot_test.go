@@ -163,7 +163,7 @@ func TestCurateProfileAndTitles(t *testing.T) {
 	rawMe := `{
 		"login": "owner", "displayname": "Test User", "email": "t@e.st",
 		"wallet": 100, "correction_point": 7,
-		"cursus_users": [{"level": 9.5, "cursus": {"name": "42cursus"}, "skills": [{"name": "Rigor", "level": 4.2}]}],
+		"cursus_users": [{"level": 9.5, "begin_at": "2024-10-01T00:00:00Z", "cursus": {"name": "42cursus"}, "skills": [{"name": "Rigor", "level": 4.2}]}],
 		"achievements": [{"name": "First blood", "tier": "easy", "description": "d"}],
 		"titles": [{"id": 1, "name": "the Beloved"}],
 		"titles_users": [{"title_id": 1, "selected": true}]
@@ -177,7 +177,7 @@ func TestCurateProfileAndTitles(t *testing.T) {
 	if p.Name != "Test User" || p.Email != "t@e.st" || p.CorrectionPoint != 7 {
 		t.Errorf("profile fields: %+v", p)
 	}
-	if len(p.Cursus) != 1 || p.Cursus[0].Level != 9.5 || len(p.Cursus[0].Skills) != 1 {
+	if len(p.Cursus) != 1 || p.Cursus[0].Level != 9.5 || p.Cursus[0].BeginAt != "2024-10-01T00:00:00Z" || len(p.Cursus[0].Skills) != 1 {
 		t.Errorf("cursus/skills: %+v", p.Cursus)
 	}
 	if len(p.Achievements) != 1 || p.Achievements[0].Name != "First blood" {

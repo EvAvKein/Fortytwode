@@ -143,6 +143,53 @@ func TestBuildVisibility(t *testing.T) {
 	})
 }
 
+// The current cursus (Latest) is the most recently begun, not the highest-level: a
+// student early in 42cursus still ranks it above a completed, higher-level C Piscine.
+// Legacy snapshots synced without begin_at fall back to non-piscine-first, then level.
+func TestBuildCursusLatestByRecency(t *testing.T) {
+	t.Parallel()
+
+	t.Run("recency beats level", func(t *testing.T) {
+		// C Piscine finished at a higher level but began earlier; 42cursus is newer -> Latest.
+		snaps := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"trupham","cursus":[
+			{"name":"C Piscine","level":11.2,"begin_at":"2024-07-01T00:00:00Z"},
+			{"name":"42cursus","level":2.5,"begin_at":"2024-09-01T00:00:00Z"}
+		]}`)}
+		rows := Build(snaps, true, nil).Profile.Cursus
+		if len(rows) != 2 || rows[0].Name != "42cursus" || !rows[0].Latest {
+			t.Errorf("expected 42cursus latest by recency, got %+v", rows)
+		}
+		if rows[1].Latest {
+			t.Error("only the leading cursus should be Latest")
+		}
+	})
+
+	t.Run("no dates: non-piscine outranks higher-level piscine", func(t *testing.T) {
+		// Legacy snapshot without begin_at: the piscine finished higher, but 42cursus is the
+		// real current cursus and must lead regardless of level.
+		snaps := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"legacy","cursus":[
+			{"name":"C Piscine","level":11.2},
+			{"name":"42cursus","level":2.5}
+		]}`)}
+		rows := Build(snaps, true, nil).Profile.Cursus
+		if len(rows) != 2 || rows[0].Name != "42cursus" || !rows[0].Latest {
+			t.Errorf("expected non-piscine (42cursus) latest without dates, got %+v", rows)
+		}
+	})
+
+	t.Run("no dates, same piscine-ness: higher level leads", func(t *testing.T) {
+		// Neither is a piscine, so level is the final tiebreak.
+		snaps := map[string]json.RawMessage{"me": json.RawMessage(`{"login":"legacy2","cursus":[
+			{"name":"42cursus","level":2.5},
+			{"name":"Old Cursus","level":9.0}
+		]}`)}
+		rows := Build(snaps, true, nil).Profile.Cursus
+		if len(rows) != 2 || rows[0].Name != "Old Cursus" || !rows[0].Latest {
+			t.Errorf("expected highest-level-first among non-piscines, got %+v", rows)
+		}
+	})
+}
+
 // An empty snapshot map has no "me" resource, so Build can't unmarshal the
 // profile and must degrade to an error page rather than panicking.
 func TestBuildEmptySnapshot(t *testing.T) {
