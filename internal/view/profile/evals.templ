@@ -2,11 +2,45 @@ package profile
 
 import "github.com/EvAvKein/Fortytwode/internal/view/model"
 
+// evaluatorHeading/evaluateeHeading derive each block's heading from the section's
+// direction: on "given" the evaluator is the profile owner, on "received" it's the
+// owner('s team) being evaluated. Keyed on login so they read the same for any viewer.
+func evaluatorHeading(given bool, login string) string {
+	if given {
+		return login + "'s write-up"
+	}
+	return "Evaluator's write-up"
+}
+
+// On "received", the heading names the response's recorded author; an authorless
+// response there can only be a teammate's (the recorded author would otherwise be
+// the owner — see model.EvaluateeFeedback.Author).
+func evaluateeHeading(given bool, author string) string {
+	if given {
+		return "Evaluated team's feedback"
+	}
+	if author == "" {
+		return "Teammate's feedback"
+	}
+	return author + "'s feedback"
+}
+
+// feedbackText renders one labelled feedback text, falling back to a muted
+// placeholder when nothing was written. Shared by the evaluator and evaluatee blocks.
+templ feedbackText(heading, text string) {
+	<span class="eval-feedback-label">{ heading }</span>
+	if text != "" {
+		<p class="eval-feedback">{ text }</p>
+	} else {
+		<p class="eval-feedback empty">No written feedback.</p>
+	}
+}
+
 // EvalList renders peer evaluations as cards: project (with the team name beside it
-// when distinctive) + date frame the full feedback text (no truncation), with mark,
-// flag and rating shown below. Uses <ol> for chronological semantics; markers are
-// hidden via CSS.
-templ EvalList(items []model.EvalItem) {
+// when distinctive) + date, then the evaluator's write-up with the verdict they
+// issued (mark + flag) right under it, then each evaluated-side response with the
+// rating it gave. Uses <ol> for chronological semantics; markers are hidden via CSS.
+templ EvalList(given bool, login string, items []model.EvalItem) {
 	<ol class="evals">
 		for _, e := range items {
 			<li>
@@ -19,20 +53,24 @@ templ EvalList(items []model.EvalItem) {
 					</span>
 					<span class="eval-date">{ e.Date }</span>
 				</div>
-				if e.Feedback != "" {
-					<p class="eval-feedback">{ e.Feedback }</p>
-				} else {
-					<p class="eval-feedback empty">No written feedback.</p>
-				}
+				@feedbackText(evaluatorHeading(given, login), e.Evaluator.Text)
 				<div class="eval-meta">
-					<span class={ "eval-mark", e.Mark.Tone }>Mark: { e.Mark.Text }</span>
+					<span class={ "eval-mark", e.Evaluator.Mark.Tone }>Mark: { e.Evaluator.Mark.Text }</span>
 					<span class="sep">·</span>
-					<span class={ "eval-flag", e.Flag.Tone }>Flag: { e.Flag.Text }</span>
-					if e.Rating != "" {
-						<span class="sep">·</span>
-						<span>Rating: <span class="eval-rating">{ e.Rating }</span></span>
-					}
+					<span class={ "eval-flag", e.Evaluator.Flag.Tone }>Flag: { e.Evaluator.Flag.Text }</span>
 				</div>
+				for _, ee := range e.Evaluatees {
+					if ee.Text != "" || ee.Rating != "" {
+						<div class="eval-evaluatee">
+							@feedbackText(evaluateeHeading(given, ee.Author), ee.Text)
+							if ee.Rating != "" {
+								<div class="eval-meta">
+									<span>Rating: <span class="eval-rating">{ ee.Rating }</span></span>
+								</div>
+							}
+						</div>
+					}
+				}
 			</li>
 		}
 	</ol>

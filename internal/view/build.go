@@ -304,30 +304,36 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 	return sec, true
 }
 
-// buildEvals renders one side of peer evaluations as cards. Participant logins are
-// never stored, so instead of naming the other party each card surfaces the feedback
-// that concerns the owner: on "received" the corrector's write-up (Comment); on "given"
-// the rating + comment students left on the owner's correction. Both sides are words
-// *about* the owner, not by them, so the summary line attributes the source (keyed on
-// login). Truancy is flagged.
+// buildEvals renders one side of peer evaluations as cards: the evaluator's write-up
+// with the verdict they issued (mark/flag, truancy flagged), then each evaluated-side
+// response with the rating it gave and its recorded author. The templates derive the
+// block headings from the direction and each response's author.
 func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inPool func(beginAt string) bool) (model.EvalSection, bool) {
 	if len(evs) == 0 {
 		return model.EvalSection{}, false
 	}
 	sort.Slice(evs, func(i, j int) bool { return evs[i].BeginAt > evs[j].BeginAt })
 
-	note := "feedback by " + login + "'s evaluators"
-	if given {
-		note = "feedback for " + login + "'s evaluations"
-	}
-	sec := model.EvalSection{PanelHeader: model.PanelHeader{Title: title, Count: len(evs)}, Note: note}
+	sec := model.EvalSection{PanelHeader: model.PanelHeader{Title: title, Count: len(evs)}}
 	for _, e := range evs {
-		feedback, rating := e.Comment, ""
-		if given {
-			feedback = e.FeedbackComment
-			if e.Rating != nil {
-				rating = stars(*e.Rating)
+		var evaluatees []model.EvaluateeFeedback
+		for _, fb := range e.AllFeedbacks() {
+			rating := ""
+			if fb.Rating != nil {
+				rating = stars(*fb.Rating)
 			}
+			// Legacy entries recorded no author. On "received" attribute them to the
+			// owner (right in the vast majority of cases, and self-corrects on the next
+			// re-sync); on "given" the author is the evaluated party, so leave "".
+			author := fb.Author
+			if !given && len(e.Feedbacks) == 0 {
+				author = login
+			}
+			evaluatees = append(evaluatees, model.EvaluateeFeedback{
+				Author: author,
+				Text:   strings.TrimSpace(fb.Comment),
+				Rating: rating,
+			})
 		}
 		// Classify piscine-grading (project path, else pool-month window)
 		// to select the pass bar the mark is toned against.
@@ -343,13 +349,15 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inP
 			project, team = team, ""
 		}
 		sec.Evals = append(sec.Evals, model.EvalItem{
-			Project:  orDash(project),
-			Team:     team,
-			Date:     ymd(e.BeginAt),
-			Mark:     model.Cell{Text: dashInt(e.FinalMark), Tone: evalMarkTone(e.FinalMark, piscine)},
-			Flag:     flag,
-			Rating:   rating,
-			Feedback: strings.TrimSpace(feedback),
+			Project: orDash(project),
+			Team:    team,
+			Date:    ymd(e.BeginAt),
+			Evaluator: model.EvaluatorFeedback{
+				Text: strings.TrimSpace(e.Comment),
+				Mark: model.Cell{Text: dashInt(e.FinalMark), Tone: evalMarkTone(e.FinalMark, piscine)},
+				Flag: flag,
+			},
+			Evaluatees: evaluatees,
 		})
 	}
 	sec.Summary = fmt.Sprintf("%d evaluation(s)", len(evs))

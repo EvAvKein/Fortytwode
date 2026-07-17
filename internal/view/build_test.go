@@ -2,6 +2,7 @@ package view
 
 import (
 	"encoding/json"
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
 	"testing"
 )
 
@@ -165,7 +166,7 @@ func TestBuildEvalMarkTone(t *testing.T) {
 	}
 	tone := map[string]string{}
 	for _, e := range d.Sections.EvalsGiven.Evals {
-		tone[e.Project] = e.Mark.Tone
+		tone[e.Project] = e.Evaluator.Mark.Tone
 	}
 	// 78 on a cursus-path project (bar 80) fails.
 	if tone["cursusFail"] != "bad" {
@@ -183,6 +184,62 @@ func TestBuildEvalMarkTone(t *testing.T) {
 	// 45 with no path, dated in the pool window: the fallback classifies it piscine (bar 50) -> red.
 	if tone["poolFallbackFail"] != "bad" {
 		t.Errorf("pathless in-pool 45 should be red, got %q", tone["poolFallbackFail"])
+	}
+}
+
+// Each eval card splits by role: the evaluator's write-up carries the verdict they
+// issued (mark/flag), each evaluated-side response carries the rating it gave — and
+// legacy snapshots (flat rating/feedback_comment) surface identically to new-shape
+// feedbacks[] entries.
+func TestBuildEvalFeedbackTexts(t *testing.T) {
+	t.Parallel()
+	eval := `[{"project":"minitalk","final_mark":100,"flag":"Ok","flag_positive":true,
+		"begin_at":"2025-03-01T10:00:00Z","comment":"Write-up.","feedbacks":[
+			{"author":"tester","rating":4,"comment":"Own response."},
+			{"rating":2,"comment":"Teammate response."}
+		]},
+		{"project":"pipex","final_mark":90,"flag":"Ok","flag_positive":true,
+		"begin_at":"2025-01-01T10:00:00Z","comment":"Write-up.","rating":3,"feedback_comment":"Legacy response."}]`
+	legacyEval := `[{"project":"libft","final_mark":80,"flag":"Ok","flag_positive":true,
+		"begin_at":"2024-11-01T10:00:00Z","comment":"Write-up.","rating":4,"feedback_comment":"Response."}]`
+	snaps := map[string]json.RawMessage{
+		"me":                       json.RawMessage(`{"login":"tester"}`),
+		"scale_teams_as_corrector": json.RawMessage(eval),
+		"scale_teams_as_corrected": json.RawMessage(legacyEval),
+	}
+	d := Build(snaps, true, nil)
+	if d.Sections.EvalsGiven == nil || d.Sections.EvalsReceived == nil {
+		t.Fatal("expected both eval sections")
+	}
+
+	given := d.Sections.EvalsGiven.Evals[0]
+	if given.Evaluator.Text != "Write-up." || given.Evaluator.Mark.Text != "100" || given.Evaluator.Flag.Text != "Ok" {
+		t.Errorf("given evaluator: got %+v", given.Evaluator)
+	}
+	wantGiven := []model.EvaluateeFeedback{
+		{Author: "tester", Text: "Own response.", Rating: stars(4)},
+		{Author: "", Text: "Teammate response.", Rating: stars(2)}, // recorded-authorless entry stays authorless
+	}
+	if len(given.Evaluatees) != 2 || given.Evaluatees[0] != wantGiven[0] || given.Evaluatees[1] != wantGiven[1] {
+		t.Errorf("given evaluatees: got %+v, want %+v", given.Evaluatees, wantGiven)
+	}
+
+	// A legacy entry on a "given" eval was authored by the evaluated party, so it
+	// must not be attributed to the owner.
+	legacyGiven := d.Sections.EvalsGiven.Evals[1]
+	wantLegacyGiven := []model.EvaluateeFeedback{{Author: "", Text: "Legacy response.", Rating: stars(3)}}
+	if len(legacyGiven.Evaluatees) != 1 || legacyGiven.Evaluatees[0] != wantLegacyGiven[0] {
+		t.Errorf("given (legacy) evaluatees: got %+v, want %+v", legacyGiven.Evaluatees, wantLegacyGiven)
+	}
+
+	received := d.Sections.EvalsReceived.Evals[0]
+	if received.Evaluator.Text != "Write-up." || received.Evaluator.Mark.Text != "80" {
+		t.Errorf("received (legacy) evaluator: got %+v", received.Evaluator)
+	}
+	// Legacy entries recorded no author; the build attributes them to the owner.
+	wantReceived := []model.EvaluateeFeedback{{Author: "tester", Text: "Response.", Rating: stars(4)}}
+	if len(received.Evaluatees) != 1 || received.Evaluatees[0] != wantReceived[0] {
+		t.Errorf("received (legacy) evaluatees: got %+v, want %+v", received.Evaluatees, wantReceived)
 	}
 }
 

@@ -63,11 +63,66 @@ func TestCurateStripsThirdPartyIdentities(t *testing.T) {
 	if e.FlagName != "Outstanding project" || e.Comment != "Solid defense, good answers." {
 		t.Errorf("dropped kept content: %+v", e)
 	}
-	if e.Rating == nil || *e.Rating != 5 || e.FeedbackComment != "Very thorough." {
+	// No "me" in this snapshot -> ownerLogin is unknown, so even the owner's own
+	// feedback entry keeps no author.
+	if len(e.Feedbacks) != 1 || e.Feedbacks[0].Author != "" || e.Feedbacks[0].Rating == nil ||
+		*e.Feedbacks[0].Rating != 5 || e.Feedbacks[0].Comment != "Very thorough." {
 		t.Errorf("dropped feedback rating/comment: %+v", e)
 	}
 	if !e.Truant {
 		t.Error("truancy fact (no-show id 99) should be recorded")
+	}
+}
+
+// Every feedback entry is kept in API order; only the owner's authorship survives —
+// a teammate's entry keeps its rating/comment but loses its author, and the
+// teammate's login is scrubbed from all kept text.
+func TestCurateKeepsAllFeedbacks(t *testing.T) {
+	t.Parallel()
+	raw := `[{"begin_at": "x", "flag": {}, "team": {"project_id": 1}, "feedbacks": [
+		{"user": {"login": "mate", "id": 3}, "rating": 2, "comment": "Meh, mate agrees."},
+		{"user": {"login": "owner", "id": 2}, "rating": 5, "comment": "Great eval."}
+	]}]`
+	out := Curate(map[string]json.RawMessage{
+		"me":                       json.RawMessage(`{"login": "owner", "id": 2}`),
+		"scale_teams_as_corrected": json.RawMessage(raw),
+	})
+	var evals []Eval
+	if err := json.Unmarshal(out["scale_teams_as_corrected"], &evals); err != nil {
+		t.Fatalf("unmarshal curated: %v", err)
+	}
+	fbs := evals[0].Feedbacks
+	if len(fbs) != 2 {
+		t.Fatalf("got %d feedbacks, want 2", len(fbs))
+	}
+	if fbs[0].Author != "" || fbs[0].Rating == nil || *fbs[0].Rating != 2 || fbs[0].Comment != "Meh, [redacted] agrees." {
+		t.Errorf("teammate entry should keep content but lose author (login scrubbed): %+v", fbs[0])
+	}
+	if fbs[1].Author != "owner" || fbs[1].Rating == nil || *fbs[1].Rating != 5 || fbs[1].Comment != "Great eval." {
+		t.Errorf("owner entry should keep authorship: %+v", fbs[1])
+	}
+	if evals[0].Rating != nil || evals[0].FeedbackComment != "" {
+		t.Errorf("legacy single-entry fields should no longer be written: %+v", evals[0])
+	}
+}
+
+// AllFeedbacks bridges snapshots persisted before Feedbacks existed: the legacy
+// rating/comment pair surfaces as one author-unknown entry, absent legacy ratings
+// stay nil (distinct from a real 0-star rating), and evals without any feedback
+// yield nothing.
+func TestEvalAllFeedbacksLegacy(t *testing.T) {
+	t.Parallel()
+	rating := 0
+	legacy := Eval{Rating: &rating, FeedbackComment: "Old text."}
+	if fbs := legacy.AllFeedbacks(); len(fbs) != 1 || fbs[0].Author != "" || fbs[0].Rating != &rating || fbs[0].Comment != "Old text." {
+		t.Errorf("legacy pair should surface as one author-unknown entry: %+v", fbs)
+	}
+	textOnly := Eval{FeedbackComment: "Old text."}
+	if fbs := textOnly.AllFeedbacks(); len(fbs) != 1 || fbs[0].Rating != nil {
+		t.Errorf("legacy entry without a rating should keep it nil: %+v", fbs)
+	}
+	if fbs := (Eval{}).AllFeedbacks(); fbs != nil {
+		t.Errorf("eval without feedback should yield nothing, got %+v", fbs)
 	}
 }
 

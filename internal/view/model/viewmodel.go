@@ -28,7 +28,6 @@ type TableSection struct {
 // EvalSection is a curated, collapsible panel rendered as a list of eval cards.
 type EvalSection struct {
 	PanelHeader
-	Note  string // muted caption after the stats
 	Evals []EvalItem
 }
 
@@ -72,16 +71,37 @@ type PointsCard struct {
 	Private      bool
 }
 
+// EvaluatorFeedback is the evaluating side of an eval card: their write-up plus the
+// verdict they issued (evaluators give a mark and flag; evaluatees give a rating —
+// see EvaluateeFeedback). Who the evaluator is follows from the section's direction,
+// so the template derives the heading; no label is carried here.
+type EvaluatorFeedback struct {
+	Text string // full text; "" -> muted placeholder in the template
+	Mark Cell   // dashInt(FinalMark) + evalMarkTone
+	Flag Cell   // flag name (+ "· truant") + tone
+}
+
+// EvaluateeFeedback is one evaluated-side response on an eval card: their text plus
+// the rating they gave the evaluation.
+type EvaluateeFeedback struct {
+	// Author mirrors the snapshot's recorded author: the owner's login when the
+	// response is provably theirs, "" when provably a teammate's. Legacy entries
+	// (author unrecorded) are attributed to the owner at build time on "received"
+	// only; on "given" the author is the evaluated party, so they stay "".
+	Author string
+	Text   string // full text; may be empty when only a rating was left
+	Rating string // stars(), "" when none
+}
+
 // EvalItem is one peer evaluation rendered as a card (not a table row): project +
-// date frame the full feedback, with mark, flag and rating shown below.
+// date frame the evaluator's write-up (with its mark and flag) and the evaluated
+// side's responses (each with its rating).
 type EvalItem struct {
-	Project  string // project name, or "—"
-	Team     string // distinctive team name shown beside the project; "" when generic
-	Date     string // ymd(BeginAt)
-	Mark     Cell   // dashInt(FinalMark) + evalMarkTone
-	Flag     Cell   // flag name (+ "· truant") + tone
-	Rating   string // stars() for "given" evals, "" otherwise
-	Feedback string // full text; "" -> muted placeholder in the template
+	Project    string              // project name, or "—"
+	Team       string              // distinctive team name shown beside the project; "" when generic
+	Date       string              // ymd(BeginAt)
+	Evaluator  EvaluatorFeedback   // the evaluator's write-up and verdict
+	Evaluatees []EvaluateeFeedback // evaluated-side responses, in stored order
 }
 
 // KV is one labelled value in the profile header.

@@ -80,24 +80,52 @@ type Project struct {
 	When      string `json:"when,omitempty"` // marked_at||updated_at, pre-resolved
 }
 
-// Eval is one peer evaluation, stripped of every participant's login. It keeps the
-// project name (resolved from the team's project_id) and its gitlab ProjectPath (the
-// authoritative piscine signal, classified at render — see PiscineGraded), the outcome
-// (mark/flag), the corrector's write-up (Comment), the peer rating left on it
-// (Rating/FeedbackComment, author dropped), and whether a truancy occurred. Team holds
+// Eval is one peer evaluation, stripped of every non-owner participant's login. It
+// keeps the project name (resolved from the team's project_id) and its gitlab
+// ProjectPath (the authoritative piscine signal, classified at render — see
+// PiscineGraded), the outcome (mark/flag), the corrector's write-up (Comment), every
+// feedback entry left on it (Feedbacks), and whether a truancy occurred. Team holds
 // the team's name only when it's distinctive (see genericTeamName).
 type Eval struct {
-	Project         string `json:"project,omitempty"`
-	ProjectPath     string `json:"project_path,omitempty"`
-	Team            string `json:"team,omitempty"`
-	FinalMark       *int   `json:"final_mark"`
-	FlagName        string `json:"flag"`
-	FlagPositive    bool   `json:"flag_positive"`
-	BeginAt         string `json:"begin_at"`
-	Comment         string `json:"comment,omitempty"`
+	Project      string         `json:"project,omitempty"`
+	ProjectPath  string         `json:"project_path,omitempty"`
+	Team         string         `json:"team,omitempty"`
+	FinalMark    *int           `json:"final_mark"`
+	FlagName     string         `json:"flag"`
+	FlagPositive bool           `json:"flag_positive"`
+	BeginAt      string         `json:"begin_at"`
+	Comment      string         `json:"comment,omitempty"`
+	Feedbacks    []EvalFeedback `json:"feedbacks,omitempty"`
+	Truant       bool           `json:"truant"`
+
+	// Legacy single-entry feedback, written by syncs that predate Feedbacks and kept
+	// only so those snapshots still read (see AllFeedbacks); never written anymore.
 	Rating          *int   `json:"rating,omitempty"`
 	FeedbackComment string `json:"feedback_comment,omitempty"`
-	Truant          bool   `json:"truant"`
+}
+
+// EvalFeedback is one feedback entry left on an evaluation by the evaluated party.
+// Author keeps the owner's login only; entries by teammates have it empty (their
+// identity is stripped like everywhere else). Rating is a pointer only because the
+// legacy entry AllFeedbacks synthesizes can lack one — entries mapped from the API
+// always carry it.
+type EvalFeedback struct {
+	Author  string `json:"author,omitempty"`
+	Rating  *int   `json:"rating,omitempty"`
+	Comment string `json:"comment,omitempty"`
+}
+
+// AllFeedbacks returns the eval's feedback entries; snapshots persisted before
+// Feedbacks was stored yield their single legacy rating/comment pair with an
+// unknown ("") author.
+func (e Eval) AllFeedbacks() []EvalFeedback {
+	if len(e.Feedbacks) > 0 {
+		return e.Feedbacks
+	}
+	if e.Rating == nil && e.FeedbackComment == "" {
+		return nil
+	}
+	return []EvalFeedback{{Rating: e.Rating, Comment: e.FeedbackComment}}
 }
 
 type Location struct {
@@ -383,10 +411,18 @@ func evalFrom(st api42.ScaleTeam, ownerLogin string, projectNames map[int]string
 		Comment:      scrub(deref(st.Comment)),
 		Truant:       st.Truant.ID != 0, // empty {} (id 0) means nobody was truant
 	}
-	if len(st.Feedbacks) > 0 {
-		fb := st.Feedbacks[0] // author (fb.User) deliberately dropped
-		e.Rating = &fb.Rating
-		e.FeedbackComment = scrub(fb.Comment)
+	// Every feedback entry is kept, in API order; only the owner's authorship survives
+	// (ownerLogin can be "" on a partial snapshot without /me — then all are stripped).
+	for _, fb := range st.Feedbacks {
+		author := ""
+		if ownerLogin != "" && fb.User.Login == ownerLogin {
+			author = ownerLogin
+		}
+		e.Feedbacks = append(e.Feedbacks, EvalFeedback{
+			Author:  author,
+			Rating:  &fb.Rating,
+			Comment: scrub(fb.Comment),
+		})
 	}
 	return e
 }

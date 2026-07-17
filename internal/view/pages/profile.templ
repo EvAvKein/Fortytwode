@@ -35,10 +35,10 @@ templ Profile(d model.PageData, viewerLogin string) {
 				@profile.TablePanel(*d.Sections.Projects)
 			}
 			if d.Sections.EvalsReceived != nil {
-				@profile.EvalPanel(*d.Sections.EvalsReceived)
+				@profile.EvalPanel(*d.Sections.EvalsReceived, false, d.Login)
 			}
 			if d.Sections.EvalsGiven != nil {
-				@profile.EvalPanel(*d.Sections.EvalsGiven)
+				@profile.EvalPanel(*d.Sections.EvalsGiven, true, d.Login)
 			}
 			if d.Sections.CorrectionPoints != nil {
 				@profile.TablePanel(*d.Sections.CorrectionPoints)
