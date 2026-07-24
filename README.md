@@ -76,7 +76,7 @@ Cert renewal (HTTP-01) then arrives via Cloudflare's proxy, so verify `make depl
 | `make prod`          | Restart the prod stack (TLS & per-IP rate limiting) on `:80`/`:443`     |
 | `make cert`          | Obtain/renew the Let's Encrypt cert (used by `deploy`)                  |
 | `make migrate`       | Apply pending DB migrations (`serve` also does this on boot)            |
-| `make backup`        | Dump the database to `./backup-<timestamp>.dump`                        |
+| `make backup`        | Dump the database to `./backups/<timestamp>.dump`                       |
 | `make logs`          | Follow the logs                                                         |
 | `make down`          | Stop the stack                                                          |
 
@@ -130,7 +130,7 @@ The database lives in the named volume `pgdata` (pinned `fortytwode_pgdata`), in
 - **Schema changes** are ordered SQL migrations in `internal/store/migrations/` (`NNNN_name.sql`), applied by `serve` on boot or `make migrate` standalone.
   Each applied migration's SQL is recorded and re-checked on boot, so editing one that already ran is an error.
   `internal/store/schema.sql` is a non-executed reference (`make schema` regenerates it) - data backfills need their own migration.
-- **Backups:** `make backup` writes `./backup-<timestamp>.dump` - restore with
+- **Backups:** `make backup` writes `./backups/<timestamp>.dump` - restore with
   `docker compose exec -T db pg_restore -U fortytwode -d fortytwode --clean < <file>`.
   Take one before any `db` change.
 - **Postgres major upgrade** (e.g. 17->18): `make backup`, bump the image, `docker volume rm fortytwode_pgdata`, start `db` fresh, then `pg_restore`

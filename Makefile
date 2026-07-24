@@ -167,13 +167,14 @@ pull:
 migrate:
 	docker compose run --build --rm app migrate
 
-# backup: dump the database to ./backup-<timestamp>.dump (Postgres' custom format).
+# backup: dump the database to ./backups/<timestamp>.dump (Postgres' custom format).
 # Restore from a dump with `make restore FILE=<dump>`.
 backup:
-	docker compose exec -T db pg_dump -U fortytwode -Fc fortytwode > backup-$$(date +%F-%H%M).dump
+	@mkdir -p backups
+	docker compose exec -T db pg_dump -U fortytwode -Fc fortytwode > backups/$$(date +%F-%H%M).dump
 
 # restore: load a Postgres dump into the database, replacing current data.
-# Usage: make restore FILE=backup-2026-07-02-1200.dump
+# Usage: make restore FILE=backups/2026-07-02-1200.dump
 restore:
 	@test -n "$(FILE)" || { echo "usage: make restore FILE=<dump>" >&2; exit 1; }
 	docker compose exec -T db pg_restore -U fortytwode -d fortytwode --clean < $(FILE)

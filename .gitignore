@@ -5,7 +5,7 @@ output/
 *.log
 
 # database dumps from `make backup`
-*.dump
+backups/
 
 # templ output — generated locally via `go generate ./...`, not versioned
 *_templ.go

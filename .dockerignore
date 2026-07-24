@@ -2,6 +2,7 @@
 .git/
 fortytwode
 output/
+backups/
 .token.json
 *.md
 .env
