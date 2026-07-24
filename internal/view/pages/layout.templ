@@ -8,10 +8,10 @@ import (
 	"github.com/EvAvKein/Fortytwode/internal/view/assets"
 )
 
-// Layout is the shared HTML shell: head + body. The stylesheet and the site-wide
-// script are loaded from the assets package as separate cacheable files (see that
-// package) rather than inlined, so editing them doesn't churn every page's HTML
-// and the pages can ship a strict script-src CSP.
+// Layout is the shared HTML shell: head + body. The stylesheet, the site-wide
+// script, and the favicon are loaded from the assets package as separate cacheable
+// files (see that package) rather than inlined, so editing them doesn't churn every
+// page's HTML and the pages can ship a strict script-src CSP.
 // pageLogin is the 42 login of the user whose profile/page is being rendered;
 // pass an empty string for pages that are not a user's profile. When pageLogin
 // matches viewerLogin, the "My Profile" header action is rendered as
@@ -25,6 +25,9 @@ templ Layout(title string, viewerLogin string, pageLogin string) {
 			<meta name="api-prefix" content={ routes.APIPrefix() }/>
 			<title>{ title }</title>
 			<link rel="stylesheet" href={ assets.StyleHref }/>
+			// sizes="any" marks the .ico as multi-resolution (16/32/48), so browsers
+			// pick the frame matching the display rather than rescaling one of them.
+			<link rel="icon" href={ assets.FaviconHref } sizes="any"/>
 			<script src={ assets.AppSrc } defer></script>
 		</head>
 		<body>

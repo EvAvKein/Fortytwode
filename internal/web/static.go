@@ -36,9 +36,9 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// registerAssets wires one route per static asset (stylesheet + scripts), served
-// from the embedded bytes. The URLs are content-fingerprinted, so the bytes can be
-// cached forever — a change to a file changes its URL, not this response's headers.
+// registerAssets wires one route per static asset (stylesheet, scripts, favicon),
+// served from the embedded bytes. The URLs are content-fingerprinted, so the bytes can
+// be cached forever — a change to a file changes its URL, not this response's headers.
 func registerAssets(mux *http.ServeMux) {
 	for _, a := range assets.All() {
 		body, ctype := a.Body, a.ContentType
@@ -48,4 +48,14 @@ func registerAssets(mux *http.ServeMux) {
 			w.Write(body)
 		})
 	}
+
+	// Crawlers and link-preview bots fetch /favicon.ico directly rather than reading
+	// the HTML's <link rel="icon">, so serve the same bytes there too — otherwise those
+	// requests fall through to the styled HTML 404. This path can't carry a fingerprint,
+	// so it gets a bounded cache lifetime instead of the immutable one above.
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/x-icon")
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		w.Write(assets.FaviconICO)
+	})
 }
