@@ -4,6 +4,8 @@
 
 Conveniently export and browse all intra-net data from your [42](https://42.fr/) studies!
 
+https://github.com/user-attachments/assets/a3ee9e94-3b0f-4263-b9fe-a87ed78b91ed
+
 ## Table of contents
 
 - [Description](#description)
