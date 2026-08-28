@@ -1,6 +1,6 @@
 module github.com/EvAvKein/Fortytwode
 
-go 1.26.5
+go 1.26.7
 
 require (
 	github.com/a-h/templ v0.3.1020
