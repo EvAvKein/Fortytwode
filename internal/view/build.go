@@ -369,9 +369,6 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inP
 // Light sections
 // ----------------------------------------------------------------------------
 
-// buildLocations lists sessions newest-first. 42 timestamps every location in UTC,
-// but a session is a person sitting at a campus workstation, so the times are shown
-// in the campus's own zone (named in the summary); an unknown zone falls back to UTC.
 func buildLocations(locs []snapshot.Location, loc *time.Location) (model.TableSection, bool) {
 	if len(locs) == 0 {
 		return model.TableSection{}, false
@@ -404,11 +401,7 @@ func buildLocations(locs []snapshot.Location, loc *time.Location) (model.TableSe
 			{Text: dur, Tone: "muted"},
 		})
 	}
-	zone := "UTC"
-	if loc != nil {
-		zone = loc.String()
-	}
-	sec.Summary = fmt.Sprintf("%.0fh logged · %d sessions · times in %s", total.Hours(), len(locs), zone)
+	sec.Summary = fmt.Sprintf("%.0fh logged · %d sessions", total.Hours(), len(locs))
 	return sec, true
 }
 

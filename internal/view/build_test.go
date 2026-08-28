@@ -302,10 +302,10 @@ func TestBuildLocationsInCampusTimeZone(t *testing.T) {
 	// 23:30 on the 1st through 00:45 on the 2nd — so the zone shifts the date too.
 	locations := json.RawMessage(`[{"host":"c1","begin_at":"2026-01-01T22:30:00Z","end_at":"2026-01-01T23:45:00Z"}]`)
 
-	for _, c := range []struct{ name, tz, begin, end, summaryZone string }{
-		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-01 23:30", "2026-01-02 00:45", "Europe/Paris"},
-		{"no zone", "", "2026-01-01 22:30", "2026-01-01 23:45", "UTC"},
-		{"unknown zone", `"campus_time_zone":"Mars/Olympus",`, "2026-01-01 22:30", "2026-01-01 23:45", "UTC"},
+	for _, c := range []struct{ name, tz, begin, end string }{
+		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-01 23:30", "2026-01-02 00:45"},
+		{"no zone", "", "2026-01-01 22:30", "2026-01-01 23:45"},
+		{"unknown zone", `"campus_time_zone":"Mars/Olympus",`, "2026-01-01 22:30", "2026-01-01 23:45"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -323,9 +323,6 @@ func TestBuildLocationsInCampusTimeZone(t *testing.T) {
 			}
 			if got := sec.Rows[0][2].Text; got != c.end {
 				t.Errorf("end: got %q, want %q", got, c.end)
-			}
-			if !strings.HasSuffix(sec.Summary, "times in "+c.summaryZone) {
-				t.Errorf("summary should name the zone %q, got %q", c.summaryZone, sec.Summary)
 			}
 			// The zone shifts the wall clock, never the elapsed time.
 			if got := sec.Rows[0][3].Text; got != "1h15m" {
