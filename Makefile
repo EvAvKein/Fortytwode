@@ -101,6 +101,13 @@ vet: generate
 vuln:
 	go tool govulncheck ./...
 
+# vuln-fix: bump the Go toolchain and deps to their latest patches, then re-scan.
+# Won't cover a CVE fixed only in a newer minor; for those run `go get <module>@<version>`
+vuln-fix:
+	go get go@patch
+	go get -u=patch ./...
+	$(MAKE) tidy vuln
+
 # tidy: prune go.mod / go.sum
 tidy:
 	go mod tidy
@@ -192,4 +199,4 @@ schema:
 	  && echo "Schema written to internal/store/schema.sql" \
 	  || { echo "Failed to regenerate schema" >&2; exit 1; }
 
-.PHONY: setup-hooks dev build generate clean logs down prune volume-rm test check fmt fmt-check vet vuln tidy fetch fetch-curated deploy prod cloudflare-ips update-prod cert pull migrate backup restore schema
+.PHONY: setup-hooks dev build generate clean logs down prune volume-rm test check fmt fmt-check vet vuln vuln-fix tidy fetch fetch-curated deploy prod cloudflare-ips update-prod cert pull migrate backup restore schema
