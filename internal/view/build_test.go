@@ -2,8 +2,10 @@ package view
 
 import (
 	"encoding/json"
-	"github.com/EvAvKein/Fortytwode/internal/view/model"
+	"strings"
 	"testing"
+
+	"github.com/EvAvKein/Fortytwode/internal/view/model"
 )
 
 func TestSectionPublic(t *testing.T) {
@@ -292,6 +294,90 @@ func TestBuildCursusLatestByRecency(t *testing.T) {
 
 // An empty snapshot map has no "me" resource, so Build can't unmarshal the
 // profile and must degrade to an error page rather than panicking.
+// 42 reports location timestamps in UTC; the table shows them in the campus's zone,
+// falling back to UTC when the campus (or its zone) is unknown.
+func TestBuildLocationsInCampusTimeZone(t *testing.T) {
+	t.Parallel()
+	// In Paris (CET, +1 in January) a 22:30–23:45 UTC session on the 1st reads as
+	// 23:30 on the 1st through 00:45 on the 2nd — so the zone shifts the date too.
+	locations := json.RawMessage(`[{"host":"c1","begin_at":"2026-01-01T22:30:00Z","end_at":"2026-01-01T23:45:00Z"}]`)
+
+	for _, c := range []struct{ name, tz, begin, end, summaryZone string }{
+		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-01 23:30", "2026-01-02 00:45", "Europe/Paris"},
+		{"no zone", "", "2026-01-01 22:30", "2026-01-01 23:45", "UTC"},
+		{"unknown zone", `"campus_time_zone":"Mars/Olympus",`, "2026-01-01 22:30", "2026-01-01 23:45", "UTC"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d := Build(map[string]json.RawMessage{
+				"me":        json.RawMessage(`{"login":"tester",` + c.tz + `"campus":"Paris"}`),
+				"locations": locations,
+			}, true, nil)
+
+			sec := d.Sections.Locations
+			if sec == nil || len(sec.Rows) != 1 {
+				t.Fatalf("expected one location row, got %+v", sec)
+			}
+			if got := sec.Rows[0][1].Text; got != c.begin {
+				t.Errorf("begin: got %q, want %q", got, c.begin)
+			}
+			if got := sec.Rows[0][2].Text; got != c.end {
+				t.Errorf("end: got %q, want %q", got, c.end)
+			}
+			if !strings.HasSuffix(sec.Summary, "times in "+c.summaryZone) {
+				t.Errorf("summary should name the zone %q, got %q", c.summaryZone, sec.Summary)
+			}
+			// The zone shifts the wall clock, never the elapsed time.
+			if got := sec.Rows[0][3].Text; got != "1h15m" {
+				t.Errorf("duration: got %q, want %q", got, "1h15m")
+			}
+		})
+	}
+}
+
+// The date-only columns are campus-dated too: a 23:30 UTC entry belongs to the next
+// day in Paris, and to its own day when the campus zone is unknown.
+func TestBuildDatesInCampusTimeZone(t *testing.T) {
+	t.Parallel()
+	snaps := func(tz string) map[string]json.RawMessage {
+		return map[string]json.RawMessage{
+			"me":                         json.RawMessage(`{"login":"tester",` + tz + `"campus":"Paris"}`),
+			"projects_users":             json.RawMessage(`[{"name":"libft","status":"finished","validated":true,"when":"2026-01-01T23:30:00Z"}]`),
+			"events_users":               json.RawMessage(`[{"name":"Meetup","kind":"talk","begin_at":"2026-01-01T23:30:00Z"}]`),
+			"quests_users":               json.RawMessage(`[{"name":"Quest","validated_at":"2026-01-01T23:30:00Z"}]`),
+			"correction_point_historics": json.RawMessage(`[{"reason":"defense","sum":1,"total":5,"created_at":"2026-01-01T23:30:00Z"}]`),
+			"scale_teams_as_corrected":   json.RawMessage(`[{"project":"libft","begin_at":"2026-01-01T23:30:00Z","final_mark":100}]`),
+		}
+	}
+
+	for _, c := range []struct{ name, tz, date string }{
+		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-02"},
+		{"no zone", "", "2026-01-01"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			d := Build(snaps(c.tz), true, nil)
+
+			// Column indexes: Projects "When" is 3, Events "When" 2, Quests "Validated" 1,
+			// Correction points "When" 3.
+			for _, cell := range []struct {
+				section string
+				got     string
+			}{
+				{"projects", d.Sections.Projects.Rows[0][3].Text},
+				{"events", d.Sections.Events.Rows[0][2].Text},
+				{"quests", strings.TrimPrefix(d.Sections.Quests.Rows[0][1].Text, "✔ ")},
+				{"correction points", d.Sections.CorrectionPoints.Rows[0][3].Text},
+				{"evals", d.Sections.EvalsReceived.Evals[0].Date},
+			} {
+				if cell.got != c.date {
+					t.Errorf("%s: got %q, want %q", cell.section, cell.got, c.date)
+				}
+			}
+		})
+	}
+}
+
 func TestBuildEmptySnapshot(t *testing.T) {
 	t.Parallel()
 	d := Build(map[string]json.RawMessage{}, true, nil)

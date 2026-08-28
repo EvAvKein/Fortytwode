@@ -344,6 +344,7 @@ func TestCurateProfileAndTitles(t *testing.T) {
 	rawMe := `{
 		"login": "owner", "displayname": "Test User", "email": "t@e.st",
 		"wallet": 100, "correction_point": 7,
+		"campus": [{"name": "Paris", "time_zone": "Europe/Paris"}],
 		"cursus_users": [{"level": 9.5, "begin_at": "2024-10-01T00:00:00Z", "cursus": {"name": "42cursus"}, "skills": [{"name": "Rigor", "level": 4.2}]}],
 		"achievements": [{"name": "First blood", "tier": "easy", "description": "d"}],
 		"titles": [{"id": 1, "name": "the Beloved"}],
@@ -357,6 +358,10 @@ func TestCurateProfileAndTitles(t *testing.T) {
 	}
 	if p.Name != "Test User" || p.Email != "t@e.st" || p.CorrectionPoint != 7 {
 		t.Errorf("profile fields: %+v", p)
+	}
+	// The campus zone is what renders location sessions in campus-local time.
+	if p.Campus != "Paris" || p.CampusTimeZone != "Europe/Paris" {
+		t.Errorf("campus: %q / %q", p.Campus, p.CampusTimeZone)
 	}
 	if len(p.Cursus) != 1 || p.Cursus[0].Level != 9.5 || p.Cursus[0].BeginAt != "2024-10-01T00:00:00Z" || len(p.Cursus[0].Skills) != 1 {
 		t.Errorf("cursus/skills: %+v", p.Cursus)

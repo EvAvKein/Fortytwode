@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	_ "time/tzdata" // registers the embedded IANA zone database time.LoadLocation reads
 	"unicode"
 
 	"golang.org/x/text/language"
@@ -97,8 +98,14 @@ func evalMarkTone(mark *int, piscine bool) string {
 	return toneIf(mark != nil && *mark < passBar(piscine), "bad")
 }
 
-// ymd keeps just the date portion of an ISO-8601 timestamp.
-func ymd(iso string) string {
+// ymd keeps just the date portion of an ISO-8601 timestamp, as dated in loc.
+// A nil loc (or an unparseable timestamp) keeps the date as written.
+func ymd(iso string, loc *time.Location) string {
+	if loc != nil {
+		if t, ok := parseTime(iso); ok {
+			return t.In(loc).Format("2006-01-02")
+		}
+	}
 	if len(iso) >= 10 {
 		return iso[:10]
 	}
@@ -110,12 +117,31 @@ func parseTime(s string) (time.Time, bool) {
 	return t, err == nil
 }
 
-// ymdhm formats an ISO timestamp as "2006-01-02 15:04", falling back to the date.
-func ymdhm(iso string) string {
+// ymdhm formats an ISO timestamp as "2006-01-02 15:04" in loc, falling back to the
+// date. A nil loc keeps the timestamp's own offset (UTC, as 42 sends it).
+func ymdhm(iso string, loc *time.Location) string {
 	if t, ok := parseTime(iso); ok {
+		if loc != nil {
+			t = t.In(loc)
+		}
 		return t.Format("2006-01-02 15:04")
 	}
-	return ymd(iso)
+	return ymd(iso, loc)
+}
+
+// campusLocation resolves a campus's IANA time zone (as 42 reports it, e.g.
+// "Europe/Paris"). Absent or unknown zones yield nil, leaving times in UTC rather
+// than mislabelling them as local. The zone database comes from this package's
+// time/tzdata import, as the runtime image ships none of its own.
+func campusLocation(tz string) *time.Location {
+	if tz == "" {
+		return nil
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil
+	}
+	return loc
 }
 
 func hoursMinutes(d time.Duration) string {

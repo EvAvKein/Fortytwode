@@ -87,12 +87,13 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 	d := model.PageData{
 		Profile: buildProfile(me, load[snapshot.Coalition](snaps, "coalitions"), owner, vis),
 	}
+	loc := campusLocation(me.CampusTimeZone)
 
 	includeSection(&d.Sections.Contact, "contact", owner, vis, func() (model.ContactSection, bool) { return buildContact(me) },
 		func(s *model.ContactSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Projects, "projects_users", owner, vis, func() (model.TableSection, bool) {
-		return buildProjects(load[snapshot.Project](snaps, "projects_users"))
+		return buildProjects(load[snapshot.Project](snaps, "projects_users"), loc)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	// Pool-month classifier, the piscine-grading fallback for evals whose project path is
@@ -100,19 +101,19 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 	inPool := snapshot.PiscineByPool(me.PoolMonth, me.PoolYear)
 
 	includeSection(&d.Sections.EvalsReceived, "scale_teams_as_corrected", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations received", false, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrected"), inPool)
+		return buildEvals("Evaluations received", false, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrected"), inPool, loc)
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.EvalsGiven, "scale_teams_as_corrector", owner, vis, func() (model.EvalSection, bool) {
-		return buildEvals("Evaluations given", true, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrector"), inPool)
+		return buildEvals("Evaluations given", true, me.Login, load[snapshot.Eval](snaps, "scale_teams_as_corrector"), inPool, loc)
 	}, func(s *model.EvalSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.CorrectionPoints, "correction_point_historics", owner, vis, func() (model.TableSection, bool) {
-		return buildCorrectionPoints(load[snapshot.CorrectionPoint](snaps, "correction_point_historics"))
+		return buildCorrectionPoints(load[snapshot.CorrectionPoint](snaps, "correction_point_historics"), loc)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Quests, "quests_users", owner, vis, func() (model.TableSection, bool) {
-		return buildQuests(load[snapshot.Quest](snaps, "quests_users"))
+		return buildQuests(load[snapshot.Quest](snaps, "quests_users"), loc)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Titles, "titles_users", owner, vis, func() (model.TableSection, bool) {
@@ -123,11 +124,11 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 		func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Events, "events_users", owner, vis, func() (model.TableSection, bool) {
-		return buildEvents(load[snapshot.Event](snaps, "events_users"))
+		return buildEvents(load[snapshot.Event](snaps, "events_users"), loc)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Locations, "locations", owner, vis, func() (model.TableSection, bool) {
-		return buildLocations(load[snapshot.Location](snaps, "locations"))
+		return buildLocations(load[snapshot.Location](snaps, "locations"), loc)
 	}, func(s *model.TableSection, p bool) { s.Private = p })
 
 	includeSection(&d.Sections.Skills, "skills", owner, vis, func() (model.SkillsSection, bool) { return buildSkills(me) },
@@ -273,7 +274,7 @@ func topSkills(cursus []snapshot.Cursus) []model.SkillBar {
 	return bars
 }
 
-func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
+func buildProjects(ps []snapshot.Project, loc *time.Location) (model.TableSection, bool) {
 	if len(ps) == 0 {
 		return model.TableSection{}, false
 	}
@@ -297,7 +298,7 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 			{Text: p.Name},
 			{Text: dashInt(p.FinalMark), Tone: projectMarkTone(p.FinalMark)},
 			result,
-			{Text: ymd(p.When), Tone: "muted"},
+			{Text: ymd(p.When, loc), Tone: "muted"},
 		})
 	}
 	sec.Summary = fmt.Sprintf("%d passed · %d failed", passed, failed)
@@ -308,7 +309,7 @@ func buildProjects(ps []snapshot.Project) (model.TableSection, bool) {
 // with the verdict they issued (mark/flag, truancy flagged), then each evaluated-side
 // response with the rating it gave and its recorded author. The templates derive the
 // block headings from the direction and each response's author.
-func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inPool func(beginAt string) bool) (model.EvalSection, bool) {
+func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inPool func(beginAt string) bool, loc *time.Location) (model.EvalSection, bool) {
 	if len(evs) == 0 {
 		return model.EvalSection{}, false
 	}
@@ -351,7 +352,7 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inP
 		sec.Evals = append(sec.Evals, model.EvalItem{
 			Project: orDash(project),
 			Team:    team,
-			Date:    ymd(e.BeginAt),
+			Date:    ymd(e.BeginAt, loc),
 			Evaluator: model.EvaluatorFeedback{
 				Text: strings.TrimSpace(e.Comment),
 				Mark: model.Cell{Text: dashInt(e.FinalMark), Tone: evalMarkTone(e.FinalMark, piscine)},
@@ -368,7 +369,10 @@ func buildEvals(title string, given bool, login string, evs []snapshot.Eval, inP
 // Light sections
 // ----------------------------------------------------------------------------
 
-func buildLocations(locs []snapshot.Location) (model.TableSection, bool) {
+// buildLocations lists sessions newest-first. 42 timestamps every location in UTC,
+// but a session is a person sitting at a campus workstation, so the times are shown
+// in the campus's own zone (named in the summary); an unknown zone falls back to UTC.
+func buildLocations(locs []snapshot.Location, loc *time.Location) (model.TableSection, bool) {
 	if len(locs) == 0 {
 		return model.TableSection{}, false
 	}
@@ -388,19 +392,23 @@ func buildLocations(locs []snapshot.Location) (model.TableSection, bool) {
 	for _, l := range locs {
 		end, dur := "active", "—"
 		if l.EndAt != nil {
-			end = ymdhm(*l.EndAt)
+			end = ymdhm(*l.EndAt, loc)
 			if d, ok := sessionDur(l); ok {
 				dur = hoursMinutes(d)
 			}
 		}
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: l.Host},
-			{Text: ymdhm(l.BeginAt)},
+			{Text: ymdhm(l.BeginAt, loc)},
 			{Text: end, Tone: toneIf(l.EndAt == nil, "good")},
 			{Text: dur, Tone: "muted"},
 		})
 	}
-	sec.Summary = fmt.Sprintf("%.0fh logged · %d sessions", total.Hours(), len(locs))
+	zone := "UTC"
+	if loc != nil {
+		zone = loc.String()
+	}
+	sec.Summary = fmt.Sprintf("%.0fh logged · %d sessions · times in %s", total.Hours(), len(locs), zone)
 	return sec, true
 }
 
@@ -416,7 +424,7 @@ func sessionDur(l snapshot.Location) (time.Duration, bool) {
 	return end.Sub(begin), true
 }
 
-func buildEvents(evs []snapshot.Event) (model.TableSection, bool) {
+func buildEvents(evs []snapshot.Event, loc *time.Location) (model.TableSection, bool) {
 	if len(evs) == 0 {
 		return model.TableSection{}, false
 	}
@@ -430,14 +438,14 @@ func buildEvents(evs []snapshot.Event) (model.TableSection, bool) {
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: e.Name},
 			{Text: e.Kind, Tone: "muted"},
-			{Text: ymd(e.BeginAt), Tone: "muted"},
+			{Text: ymd(e.BeginAt, loc), Tone: "muted"},
 		})
 	}
 	sec.Summary = fmt.Sprintf("%d event(s)", len(evs))
 	return sec, true
 }
 
-func buildQuests(qs []snapshot.Quest) (model.TableSection, bool) {
+func buildQuests(qs []snapshot.Quest, loc *time.Location) (model.TableSection, bool) {
 	if len(qs) == 0 {
 		return model.TableSection{}, false
 	}
@@ -449,7 +457,7 @@ func buildQuests(qs []snapshot.Quest) (model.TableSection, bool) {
 	for _, q := range qs {
 		v := model.Cell{Text: "—", Tone: "muted"}
 		if q.ValidatedAt != nil {
-			v, validated = model.Cell{Text: "✔ " + ymd(*q.ValidatedAt), Tone: "good"}, validated+1
+			v, validated = model.Cell{Text: "✔ " + ymd(*q.ValidatedAt, loc), Tone: "good"}, validated+1
 		}
 		sec.Rows = append(sec.Rows, []model.Cell{
 			{Text: q.Name},
@@ -483,7 +491,7 @@ func buildTitles(titles []snapshot.Title, login string) (model.TableSection, boo
 	return sec, true
 }
 
-func buildCorrectionPoints(hs []snapshot.CorrectionPoint) (model.TableSection, bool) {
+func buildCorrectionPoints(hs []snapshot.CorrectionPoint, loc *time.Location) (model.TableSection, bool) {
 	if len(hs) == 0 {
 		return model.TableSection{}, false
 	}
@@ -505,7 +513,7 @@ func buildCorrectionPoints(hs []snapshot.CorrectionPoint) (model.TableSection, b
 			{Text: h.Reason},
 			{Text: delta, Tone: tone},
 			{Text: strconv.Itoa(h.Total)},
-			{Text: ymd(h.CreatedAt), Tone: "muted"},
+			{Text: ymd(h.CreatedAt, loc), Tone: "muted"},
 		})
 	}
 	sec.Summary = fmt.Sprintf("%d change(s)", len(hs))

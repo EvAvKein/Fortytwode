@@ -32,6 +32,7 @@ type Profile struct {
 	Email           string        `json:"email,omitempty"`
 	ImageURL        string        `json:"image_url,omitempty"`
 	Campus          string        `json:"campus,omitempty"`
+	CampusTimeZone  string        `json:"campus_time_zone,omitempty"` // IANA name, e.g. "Europe/Paris"; renders campus-local times
 	Wallet          int           `json:"wallet"`
 	CorrectionPoint int           `json:"correction_point"`
 	PoolMonth       string        `json:"pool_month,omitempty"`
@@ -326,6 +327,7 @@ func profileFrom(me api42.Me) Profile {
 	}
 	if len(me.Campus) > 0 {
 		p.Campus = me.Campus[0].Name
+		p.CampusTimeZone = me.Campus[0].TimeZone
 	}
 	for _, cu := range me.CursusUsers {
 		c := Cursus{
