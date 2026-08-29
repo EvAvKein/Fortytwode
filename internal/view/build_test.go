@@ -52,7 +52,7 @@ func TestBuildVisibility(t *testing.T) {
 	}
 
 	t.Run("OwnerSeesAll", func(t *testing.T) {
-		owner := Build(snaps, true, nil)
+		owner := Build(snaps, true, nil, nil)
 		if owner.Sections.Locations == nil || owner.Sections.Projects == nil {
 			t.Error("owner should see Locations and Projects")
 		}
@@ -92,7 +92,7 @@ func TestBuildVisibility(t *testing.T) {
 	})
 
 	t.Run("PublicSeesDefaults", func(t *testing.T) {
-		pub := Build(snaps, false, nil)
+		pub := Build(snaps, false, nil, nil)
 		if pub.Sections.Locations != nil {
 			t.Error("non-owner should not see Locations by default")
 		}
@@ -117,7 +117,7 @@ func TestBuildVisibility(t *testing.T) {
 	})
 
 	t.Run("PrivateOverrides", func(t *testing.T) {
-		private := Build(snaps, false, map[string]bool{"coalitions": false, "achievements": false})
+		private := Build(snaps, false, map[string]bool{"coalitions": false, "achievements": false}, nil)
 		if private.Profile != nil && private.Profile.Coalition != nil {
 			t.Error("non-owner should not see the Coalition card when opted private")
 		}
@@ -127,7 +127,7 @@ func TestBuildVisibility(t *testing.T) {
 	})
 
 	t.Run("OptedInOverrides", func(t *testing.T) {
-		opted := Build(snaps, false, map[string]bool{"coalitions": true, "locations": true, "contact": true, "points": true, "skills": true})
+		opted := Build(snaps, false, map[string]bool{"coalitions": true, "locations": true, "contact": true, "points": true, "skills": true}, nil)
 		if opted.Sections.Locations == nil {
 			t.Error("non-owner should see Locations when opted public")
 		}
@@ -162,7 +162,7 @@ func TestBuildEvalMarkTone(t *testing.T) {
 			{"project":"poolFallbackFail","final_mark":45,"flag":"Ok","flag_positive":true,"begin_at":"2024-07-05T10:00:00Z"}
 		]`),
 	}
-	d := Build(snaps, true, nil)
+	d := Build(snaps, true, nil, nil)
 	if d.Sections.EvalsGiven == nil {
 		t.Fatal("expected EvalsGiven section")
 	}
@@ -209,7 +209,7 @@ func TestBuildEvalFeedbackTexts(t *testing.T) {
 		"scale_teams_as_corrector": json.RawMessage(eval),
 		"scale_teams_as_corrected": json.RawMessage(legacyEval),
 	}
-	d := Build(snaps, true, nil)
+	d := Build(snaps, true, nil, nil)
 	if d.Sections.EvalsGiven == nil || d.Sections.EvalsReceived == nil {
 		t.Fatal("expected both eval sections")
 	}
@@ -257,7 +257,7 @@ func TestBuildCursusLatestByRecency(t *testing.T) {
 			{"name":"C Piscine","level":11.2,"begin_at":"2024-07-01T00:00:00Z"},
 			{"name":"42cursus","level":2.5,"begin_at":"2024-09-01T00:00:00Z"}
 		]}`)}
-		rows := Build(snaps, true, nil).Profile.Cursus
+		rows := Build(snaps, true, nil, nil).Profile.Cursus
 		if len(rows) != 2 || rows[0].Name != "42cursus" || !rows[0].Latest {
 			t.Errorf("expected 42cursus latest by recency, got %+v", rows)
 		}
@@ -273,7 +273,7 @@ func TestBuildCursusLatestByRecency(t *testing.T) {
 			{"name":"C Piscine","level":11.2},
 			{"name":"42cursus","level":2.5}
 		]}`)}
-		rows := Build(snaps, true, nil).Profile.Cursus
+		rows := Build(snaps, true, nil, nil).Profile.Cursus
 		if len(rows) != 2 || rows[0].Name != "42cursus" || !rows[0].Latest {
 			t.Errorf("expected non-piscine (42cursus) latest without dates, got %+v", rows)
 		}
@@ -285,34 +285,45 @@ func TestBuildCursusLatestByRecency(t *testing.T) {
 			{"name":"42cursus","level":2.5},
 			{"name":"Old Cursus","level":9.0}
 		]}`)}
-		rows := Build(snaps, true, nil).Profile.Cursus
+		rows := Build(snaps, true, nil, nil).Profile.Cursus
 		if len(rows) != 2 || rows[0].Name != "Old Cursus" || !rows[0].Latest {
 			t.Errorf("expected highest-level-first among non-piscines, got %+v", rows)
 		}
 	})
 }
 
-// An empty snapshot map has no "me" resource, so Build can't unmarshal the
-// profile and must degrade to an error page rather than panicking.
 // 42 reports location timestamps in UTC; the table shows them in the campus's zone,
-// falling back to UTC when the campus (or its zone) is unknown.
+// falling back to UTC when the campus (or its zone) is unknown. A snapshot with no
+// zone of its own takes one from zoneFor — what another account at the campus knows.
 func TestBuildLocationsInCampusTimeZone(t *testing.T) {
 	t.Parallel()
 	// In Paris (CET, +1 in January) a 22:30–23:45 UTC session on the 1st reads as
 	// 23:30 on the 1st through 00:45 on the 2nd — so the zone shifts the date too.
 	locations := json.RawMessage(`[{"host":"c1","begin_at":"2026-01-01T22:30:00Z","end_at":"2026-01-01T23:45:00Z"}]`)
+	paris := func(campus string) string {
+		if campus == "Paris" {
+			return "Europe/Paris"
+		}
+		return ""
+	}
 
-	for _, c := range []struct{ name, tz, begin, end string }{
-		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-01 23:30", "2026-01-02 00:45"},
-		{"no zone", "", "2026-01-01 22:30", "2026-01-01 23:45"},
-		{"unknown zone", `"campus_time_zone":"Mars/Olympus",`, "2026-01-01 22:30", "2026-01-01 23:45"},
+	for _, c := range []struct {
+		name, tz   string
+		zoneFor    func(string) string
+		begin, end string
+	}{
+		{"campus zone", `"campus_time_zone":"Europe/Paris",`, nil, "2026-01-01 23:30", "2026-01-02 00:45"},
+		{"no zone", "", nil, "2026-01-01 22:30", "2026-01-01 23:45"},
+		{"unknown zone", `"campus_time_zone":"Mars/Olympus",`, nil, "2026-01-01 22:30", "2026-01-01 23:45"},
+		{"zone from the campus index", "", paris, "2026-01-01 23:30", "2026-01-02 00:45"},
+		{"campus index has no zone", "", func(string) string { return "" }, "2026-01-01 22:30", "2026-01-01 23:45"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			d := Build(map[string]json.RawMessage{
 				"me":        json.RawMessage(`{"login":"tester",` + c.tz + `"campus":"Paris"}`),
 				"locations": locations,
-			}, true, nil)
+			}, true, nil, c.zoneFor)
 
 			sec := d.Sections.Locations
 			if sec == nil || len(sec.Rows) != 1 {
@@ -347,13 +358,18 @@ func TestBuildDatesInCampusTimeZone(t *testing.T) {
 		}
 	}
 
-	for _, c := range []struct{ name, tz, date string }{
-		{"campus zone", `"campus_time_zone":"Europe/Paris",`, "2026-01-02"},
-		{"no zone", "", "2026-01-01"},
+	for _, c := range []struct {
+		name, tz string
+		zoneFor  func(string) string
+		date     string
+	}{
+		{"campus zone", `"campus_time_zone":"Europe/Paris",`, nil, "2026-01-02"},
+		{"no zone", "", nil, "2026-01-01"},
+		{"zone from the campus index", "", func(string) string { return "Europe/Paris" }, "2026-01-02"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			d := Build(snaps(c.tz), true, nil)
+			d := Build(snaps(c.tz), true, nil, c.zoneFor)
 
 			// Column indexes: Projects "When" is 3, Events "When" 2, Quests "Validated" 1,
 			// Correction points "When" 3.
@@ -375,9 +391,11 @@ func TestBuildDatesInCampusTimeZone(t *testing.T) {
 	}
 }
 
+// An empty snapshot map has no "me" resource, so Build can't unmarshal the
+// profile and must degrade to an error page rather than panicking.
 func TestBuildEmptySnapshot(t *testing.T) {
 	t.Parallel()
-	d := Build(map[string]json.RawMessage{}, true, nil)
+	d := Build(map[string]json.RawMessage{}, true, nil, nil)
 	if !d.IsError {
 		t.Errorf("empty snapshot should yield an error page, got %+v", d)
 	}
@@ -386,7 +404,7 @@ func TestBuildEmptySnapshot(t *testing.T) {
 // A malformed "me" snapshot is reported as an error page, not a panic.
 func TestBuildInvalidMe(t *testing.T) {
 	t.Parallel()
-	d := Build(map[string]json.RawMessage{"me": json.RawMessage(`{not json`)}, true, nil)
+	d := Build(map[string]json.RawMessage{"me": json.RawMessage(`{not json`)}, true, nil, nil)
 	if !d.IsError {
 		t.Errorf("invalid \"me\" should yield an error page, got %+v", d)
 	}

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +31,9 @@ type Store struct {
 	pool      *pgxpool.Pool
 	downloads atomic.Int64
 	profiles  atomic.Int64
+
+	campusZonesMu sync.RWMutex
+	campusZones   map[string]string // campus name -> IANA zone, see CampusTimeZone
 }
 
 // Open connects to dsn and applies any pending migrations.
@@ -38,7 +42,7 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect to database: %w", err)
 	}
-	s := &Store{pool: pool}
+	s := &Store{pool: pool, campusZones: map[string]string{}}
 	if err := s.Migrate(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply migrations: %w", err)
@@ -46,6 +50,10 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 	if err := s.loadStats(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("load stats: %w", err)
+	}
+	if err := s.loadCampusZones(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("load campus time zones: %w", err)
 	}
 	return s, nil
 }
@@ -68,7 +76,7 @@ func (s *Store) Close() { s.pool.Close() }
 // OpenRaw creates a Store backed by the given pool but does not run migrations.
 // Use when migrations are applied once up front (e.g. in test setup).
 func OpenRaw(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool}
+	return &Store{pool: pool, campusZones: map[string]string{}}
 }
 
 // Ping verifies the database is reachable (used by the /healthcheck endpoint).
@@ -126,7 +134,8 @@ func populateAccountByJsonb(a *Account, data, vis []byte) error {
 // raw third-party data. A unique-constraint violation (email or ft_id taken) is
 // reported as ErrDuplicate.
 func (s *Store) CreateAccount(ctx context.Context, email string, ftID int64, ftLogin string, data map[string]json.RawMessage) (int64, error) {
-	blob, err := json.Marshal(snapshot.Curate(data))
+	curated := snapshot.Curate(data)
+	blob, err := json.Marshal(curated)
 	if err != nil {
 		return 0, err
 	}
@@ -138,6 +147,9 @@ func (s *Store) CreateAccount(ctx context.Context, email string, ftID int64, ftL
 		email, ftID, ftLogin, string(blob)).Scan(&id)
 	if isUniqueViolation(err) {
 		return 0, ErrDuplicate
+	}
+	if err == nil {
+		s.noteCampusZone(curated)
 	}
 	return id, err
 }
@@ -171,13 +183,17 @@ func (s *Store) accountWhere(ctx context.Context, cond string, arg any) (Account
 // snapshot (a resource absent from this run keeps its previous value) and bumps
 // fetched_at. Curate is presence-driven, so the merge preserves untouched resources.
 func (s *Store) UpdateSnapshot(ctx context.Context, accountID int64, data map[string]json.RawMessage) error {
-	blob, err := json.Marshal(snapshot.Curate(data))
+	curated := snapshot.Curate(data)
+	blob, err := json.Marshal(curated)
 	if err != nil {
 		return err
 	}
 	_, err = s.pool.Exec(ctx,
 		`UPDATE accounts SET data = data || $2::jsonb, fetched_at = now() WHERE id = $1`,
 		accountID, string(blob))
+	if err == nil {
+		s.noteCampusZone(curated)
+	}
 	return err
 }
 
@@ -568,6 +584,67 @@ func (s *Store) IncrementDownloads() {
 func (s *Store) IncrementProfiles() {
 	s.profiles.Add(1)
 	go s.pool.Exec(context.Background(), `UPDATE stats SET profiles = profiles + 1`)
+}
+
+// A campus's time zone is a property of the campus, not of the user, so one account
+// that has it saved tells us the zone for every other account at the same campus. The
+// index below collects those zones (keyed by campus name — the id isn't persisted) so
+// accounts whose snapshot predates the zone being fetched still render in campus time,
+// without waiting for their owner to re-sync. It is memory-only: nothing is written
+// back into anyone's stored snapshot.
+
+// loadCampusZones fills the index from the accounts that do carry a zone, newest
+// snapshot winning per campus. Called once at Open; syncs keep it current from there.
+func (s *Store) loadCampusZones(ctx context.Context) error {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (data->'me'->>'campus')
+		       data->'me'->>'campus', data->'me'->>'campus_time_zone'
+		  FROM accounts
+		 WHERE data->'me'->>'campus' <> '' AND data->'me'->>'campus_time_zone' <> ''
+		 ORDER BY data->'me'->>'campus', fetched_at DESC`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	zones := map[string]string{}
+	for rows.Next() {
+		var campus, zone string
+		if err := rows.Scan(&campus, &zone); err != nil {
+			return err
+		}
+		zones[campus] = zone
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	s.campusZonesMu.Lock()
+	defer s.campusZonesMu.Unlock()
+	s.campusZones = zones
+	return nil
+}
+
+// noteCampusZone records the campus zone carried by a just-curated snapshot, if any.
+func (s *Store) noteCampusZone(curated map[string]json.RawMessage) {
+	var me snapshot.Profile
+	if err := json.Unmarshal(curated["me"], &me); err != nil {
+		return
+	}
+	if me.Campus == "" || me.CampusTimeZone == "" {
+		return
+	}
+	s.campusZonesMu.Lock()
+	defer s.campusZonesMu.Unlock()
+	s.campusZones[me.Campus] = me.CampusTimeZone
+}
+
+// CampusTimeZone returns the IANA zone known for a campus, or "" if we've never seen
+// one. Its shape matches view.Build's zone lookup, which takes this method directly.
+func (s *Store) CampusTimeZone(campus string) string {
+	s.campusZonesMu.RLock()
+	defer s.campusZonesMu.RUnlock()
+	return s.campusZones[campus]
 }
 
 // isUniqueViolation reports whether err is a Postgres unique_violation (23505).

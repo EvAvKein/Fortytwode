@@ -643,7 +643,7 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := view.Build(acc.Data, owner, acc.Visibility)
+	d := view.Build(acc.Data, owner, acc.Visibility, s.store.CampusTimeZone)
 	d.Owner = owner
 	d.Login = acc.FtLogin
 	if owner {

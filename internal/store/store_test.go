@@ -632,6 +632,75 @@ func TestAccountCredentialsAndSessions(t *testing.T) {
 	}
 }
 
+// A campus's time zone is shared by everyone at it, so one account carrying it makes
+// it known for the rest — including accounts whose snapshot predates the zone being
+// saved at all, which is the case this index exists for.
+func TestCampusTimeZones(t *testing.T) {
+	t.Parallel()
+	st := storetest.OpenStore(t)
+	ctx := context.Background()
+	// A campus name unique to this test: the index is built from every account in the
+	// shared test database, including those of tests running alongside this one.
+	campus := fmt.Sprintf("Campus%d", uniqueID())
+
+	// The snapshots are raw /v2/me payloads — CreateAccount curates them, and the zone
+	// is read off the curated profile.
+	withZone := func(zone string) map[string]json.RawMessage {
+		return map[string]json.RawMessage{
+			"me": json.RawMessage(fmt.Sprintf(`{"login":"tester","campus":[{"name":%q,"time_zone":%q}]}`, campus, zone)),
+		}
+	}
+
+	create := func(t *testing.T, data map[string]json.RawMessage) int64 {
+		t.Helper()
+		u := uniqueID()
+		id, err := st.CreateAccount(ctx, fmt.Sprintf("zone-%d@e.st", u), u, fmt.Sprintf("zoned%d", u), data)
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		t.Cleanup(func() { st.DeleteAccount(ctx, id) })
+		return id
+	}
+
+	// An account saved before the zone was fetched teaches the index nothing.
+	noZoneID := create(t, withZone(""))
+	if got := st.CampusTimeZone(campus); got != "" {
+		t.Errorf("zoneless account: got %q, want %q", got, "")
+	}
+
+	create(t, withZone("Europe/Paris"))
+	if got := st.CampusTimeZone(campus); got != "Europe/Paris" {
+		t.Errorf("after a zoned account: got %q, want %q", got, "Europe/Paris")
+	}
+	if got := st.CampusTimeZone("Nowhere-" + campus); got != "" {
+		t.Errorf("unknown campus: got %q, want %q", got, "")
+	}
+
+	t.Run("UpdateSnapshot", func(t *testing.T) {
+		if err := st.UpdateSnapshot(ctx, noZoneID, withZone("Asia/Jerusalem")); err != nil {
+			t.Fatalf("update snapshot: %v", err)
+		}
+		if got := st.CampusTimeZone(campus); got != "Asia/Jerusalem" {
+			t.Errorf("after a re-sync: got %q, want %q", got, "Asia/Jerusalem")
+		}
+	})
+
+	// What a restart rebuilds from the stored accounts: the newest snapshot's zone,
+	// which UpdateSnapshot above has just made the one it wrote.
+	t.Run("RebuildFromAccounts", func(t *testing.T) {
+		fresh := storetest.OpenStore(t)
+		if got := fresh.CampusTimeZone(campus); got != "" {
+			t.Errorf("before loading: got %q, want %q", got, "")
+		}
+		if err := fresh.TestLoadCampusZones(ctx); err != nil {
+			t.Fatalf("load campus zones: %v", err)
+		}
+		if got := fresh.CampusTimeZone(campus); got != "Asia/Jerusalem" {
+			t.Errorf("after loading: got %q, want %q", got, "Asia/Jerusalem")
+		}
+	})
+}
+
 var (
 	testIDBase = time.Now().UnixNano()
 	testIDSeq  atomic.Int64

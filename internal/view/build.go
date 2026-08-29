@@ -78,7 +78,11 @@ func includeSection[T any](dst **T, key string, owner bool, vis map[string]bool,
 
 // Build assembles the dashboard from a curated snapshot. When owner is false the
 // Email row and any non-public section (per vis) are dropped.
-func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) model.PageData {
+//
+// zoneFor (nil-safe) maps a campus name to its IANA time zone, and is consulted only
+// for snapshots taken before the zone was fetched: their timestamps still render in
+// campus time, from whatever zone another account at the same campus has told us.
+func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool, zoneFor func(campus string) string) model.PageData {
 	var me snapshot.Profile
 	if err := json.Unmarshal(snaps["me"], &me); err != nil {
 		return model.PageData{IsError: true, Status: fmt.Sprintf("stored \"me\" snapshot is not valid JSON: %v", err)}
@@ -88,6 +92,9 @@ func Build(snaps map[string]json.RawMessage, owner bool, vis map[string]bool) mo
 		Profile: buildProfile(me, load[snapshot.Coalition](snaps, "coalitions"), owner, vis),
 	}
 	loc := campusLocation(me.CampusTimeZone)
+	if loc == nil && zoneFor != nil {
+		loc = campusLocation(zoneFor(me.Campus))
+	}
 
 	includeSection(&d.Sections.Contact, "contact", owner, vis, func() (model.ContactSection, bool) { return buildContact(me) },
 		func(s *model.ContactSection, p bool) { s.Private = p })
