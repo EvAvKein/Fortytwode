@@ -191,11 +191,10 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 // true. One shared budget keeps the email-correction form from being looped to
 // spray mail at arbitrary addresses.
 func (s *Server) verifyResendAllowed(w http.ResponseWriter, r *http.Request, acc store.Account) bool {
-	if !s.verifyResends.allowed(acc.ID) {
+	if !s.verifyResends.take(acc.ID) {
 		http.Redirect(w, r, routes.PageVerifyPending+"?error=rate-limited", http.StatusFound)
 		return false
 	}
-	s.verifyResends.recordFailed(acc.ID)
 	return true
 }
 

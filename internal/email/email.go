@@ -32,6 +32,10 @@ type Sender interface {
 	// changed to newEmail, so a silent takeover doesn't go unnoticed.
 	SendEmailChangeNotice(ctx context.Context, to, newEmail string) error
 	SendDeletionConfirmation(ctx context.Context, to, login, link string) error
+
+	// SendMaintainerAlert sends a plain-text operational alert (e.g. to
+	// Config.MaintainerEmail) rather than account mail.
+	SendMaintainerAlert(ctx context.Context, to, subject, body string) error
 }
 
 // New returns a Sender from config. With no RESEND_API_KEY it returns a logging
@@ -86,6 +90,12 @@ func (logSender) SendDeletionConfirmation(_ context.Context, to, login, link str
 	return nil
 }
 
+// The caller already logs the alert body, so only note that the email was skipped.
+func (logSender) SendMaintainerAlert(_ context.Context, to, subject, _ string) error {
+	fmt.Fprintf(os.Stderr, "email (not sent, no API key): maintainer alert to %s: %s\n", to, subject)
+	return nil
+}
+
 // resendSender posts to Resend's API.
 type resendSender struct {
 	apiKey  string
@@ -112,6 +122,10 @@ func (s *resendSender) SendEmailChangeNotice(ctx context.Context, to, newEmail s
 
 func (s *resendSender) SendDeletionConfirmation(ctx context.Context, to, login, link string) error {
 	return s.send(ctx, to, "Confirm your Fortytwode account deletion", deletionText(login, link), deletionHTML(login, link))
+}
+
+func (s *resendSender) SendMaintainerAlert(ctx context.Context, to, subject, body string) error {
+	return s.send(ctx, to, subject, body, "<pre>"+html.EscapeString(body)+"</pre>")
 }
 
 // send posts one transactional email to Resend's API.

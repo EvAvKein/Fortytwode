@@ -180,8 +180,10 @@ func (s *Server) rotateSession(w http.ResponseWriter, r *http.Request, accountID
 	return newID, nil
 }
 
-// attemptLimiter tracks recent failed attempts keyed by an arbitrary comparable
-// value (account ID, email, etc.). It is intentionally in-memory and
+// attemptLimiter is a sliding-window cap on events keyed by an arbitrary
+// comparable value (account ID, email, alert key, etc.): take() charges and
+// checks in one step, while allowed()/recordFailed() suit callers that only
+// charge failures. It is intentionally in-memory and
 // non-persistent: a restart clears it. Periodic calls to prune() free memory
 // from keys that are no longer actively failing.
 type attemptLimiter[T comparable] struct {
@@ -211,6 +213,18 @@ func (a *attemptLimiter[T]) recordFailed(key T) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.attempts[key] = append(a.attempts[key], a.now())
+}
+
+// take is allowed plus recordFailed under one lock, so a concurrent burst gets
+// at most max successes.
+func (a *attemptLimiter[T]) take(key T) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.countRecentLocked(key) >= a.max {
+		return false
+	}
+	a.attempts[key] = append(a.attempts[key], a.now())
+	return true
 }
 
 func (a *attemptLimiter[T]) clear(key T) {

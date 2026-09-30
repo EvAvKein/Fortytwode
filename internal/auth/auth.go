@@ -11,12 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/config"
@@ -116,23 +118,105 @@ func ExchangeCode(cfg config.Config, code string) (string, error) {
 // client timeout) so a hung 42 endpoint can't hang the caller indefinitely.
 var tokenClient = &http.Client{Timeout: 30 * time.Second}
 
-// requestToken exchanges the given grant for a token at the OAuth token URL.
-func requestToken(cfg config.Config, params url.Values) (storedToken, error) {
-	params.Set("client_id", cfg.ClientID)
-	params.Set("client_secret", cfg.ClientSecret)
+// tokenURL is a var (not a direct config.TokenURL reference) purely as a test
+// seam, so tests can point it at an httptest.Server instead of the real 42 API.
+var tokenURL = config.TokenURL
 
-	res, err := tokenClient.PostForm(config.TokenURL, params)
+// tokenError is a non-200 response from 42's token endpoint. OAuthError holds
+// the parsed RFC 6749 §5.2 "error" field (e.g. "invalid_client") when the body
+// parses as JSON, so callers can tell a stale-secret rejection apart from other
+// failures; Body is kept for diagnosis/alerting.
+type tokenError struct {
+	StatusCode int
+	OAuthError string
+	Body       string
+}
+
+// maxTokenErrorBody caps how much of an error response is kept, so e.g. a
+// proxy's HTML error page doesn't flood logs and alert emails.
+const maxTokenErrorBody = 512
+
+// maxTokenResponseBody caps how much of a token response is read at all.
+const maxTokenResponseBody = 1024 * 1024 // 1 MiB
+
+func newTokenError(status int, body []byte) *tokenError {
+	var parsed struct {
+		Error string `json:"error"`
+	}
+	_ = json.Unmarshal(body, &parsed) // best-effort; OAuthError stays "" on an unexpected shape
+	b := string(body)
+	if len(b) > maxTokenErrorBody {
+		b = b[:maxTokenErrorBody] + "…(truncated)"
+	}
+	return &tokenError{StatusCode: status, OAuthError: parsed.Error, Body: b}
+}
+
+func (e *tokenError) Error() string {
+	return fmt.Sprintf("token request failed (%d): %s", e.StatusCode, e.Body)
+}
+
+func isOAuthError(err error, text string) bool {
+	var te *tokenError
+	return errors.As(err, &te) && te.OAuthError == text
+}
+
+// IsClientSecretRejected reports whether 42 rejected our client_secret
+// (invalid_client) — the condition that triggers the current->next secret
+// fallback, and that means live sign-in/sync is broken if it's still returned
+// after that fallback.
+func IsClientSecretRejected(err error) bool { return isOAuthError(err, "invalid_client") }
+
+// IsInvalidGrant reports whether 42 rejected the grant itself (e.g. an
+// authorization code that expired or was already used) — a user-side retry
+// fixes it, unlike a secret rejection.
+func IsInvalidGrant(err error) bool { return isOAuthError(err, "invalid_grant") }
+
+// useNextSecret latches once cfg.ClientSecretNext has succeeded after 42
+// rejected cfg.ClientSecret, so later requests skip the doomed first attempt.
+// In-memory on purpose: a restart with updated env starts from the current secret.
+var useNextSecret atomic.Bool
+
+// requestToken exchanges the given grant for a token, trying cfg.ClientSecret
+// first and retrying once with cfg.ClientSecretNext (if set) only when 42
+// rejects the current secret as invalid_client; any other failure wouldn't be
+// fixed by a retry. Once that retry succeeds, ClientSecretNext is used directly.
+func requestToken(cfg config.Config, params url.Values) (storedToken, error) {
+	if cfg.ClientSecretNext != "" && useNextSecret.Load() {
+		return requestTokenWithSecret(cfg, cfg.ClientSecretNext, params)
+	}
+	t, err := requestTokenWithSecret(cfg, cfg.ClientSecret, params)
+	if IsClientSecretRejected(err) && cfg.ClientSecretNext != "" {
+		t, err = requestTokenWithSecret(cfg, cfg.ClientSecretNext, params)
+		if err == nil {
+			useNextSecret.Store(true)
+		}
+	}
+	return t, err
+}
+
+// requestTokenWithSecret exchanges params for a token using exactly the given
+// client secret, with no fallback.
+func requestTokenWithSecret(cfg config.Config, secret string, params url.Values) (storedToken, error) {
+	params.Set("client_id", cfg.ClientID)
+	params.Set("client_secret", secret)
+
+	res, err := tokenClient.PostForm(tokenURL, params)
 	if err != nil {
 		return storedToken{}, err
 	}
 	defer res.Body.Close()
 
-	var t storedToken
-	if err := json.NewDecoder(res.Body).Decode(&t); err != nil {
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxTokenResponseBody))
+	if err != nil {
 		return storedToken{}, err
 	}
 	if res.StatusCode != http.StatusOK {
-		return storedToken{}, fmt.Errorf("token request failed (%d)", res.StatusCode)
+		return storedToken{}, newTokenError(res.StatusCode, body)
+	}
+
+	var t storedToken
+	if err := json.Unmarshal(body, &t); err != nil {
+		return storedToken{}, err
 	}
 	if t.CreatedAt == 0 {
 		t.CreatedAt = time.Now().Unix()

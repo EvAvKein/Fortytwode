@@ -55,12 +55,11 @@ func (s *Server) handleRequestDelete(w http.ResponseWriter, r *http.Request) {
 	if s.gateUnverified(w, r, acc) {
 		return
 	}
-	if !s.deleteRequests.allowed(acc.ID) {
+	if !s.deleteRequests.take(acc.ID) {
 		renderStatus(w, r, http.StatusTooManyRequests,
 			pages.DeleteRequested(acc.Email, "Too many requests — wait a little before trying again.", acc.FtLogin))
 		return
 	}
-	s.deleteRequests.recordFailed(acc.ID)
 	s.issueDeletion(r.Context(), acc.ID, acc.Email, acc.FtLogin)
 	http.Redirect(w, r, routes.PageSettings+"?deletion=requested", http.StatusSeeOther)
 }

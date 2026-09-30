@@ -37,6 +37,7 @@ type Server struct {
 	deleteRequests      *attemptLimiter[int64]  // per-account deletion-confirmation request cap
 	tokenAttempts       *attemptLimiter[string] // per-client invalid emailed-token cap
 	email               email.Sender            // transactional email (login/verification/deletion links)
+	maintainerAlerts    *attemptLimiter[string] // once-per-window cap on each maintainer alert
 }
 
 // Serve starts the web app, reading PORT (default 4242).
@@ -57,6 +58,7 @@ func Serve(cfg config.Config, st *store.Store) error {
 		deleteRequests:      newAttemptLimiter[int64](maxDeleteRequests, deleteRequestWindow),
 		tokenAttempts:       newAttemptLimiter[string](maxTokenAttempts, tokenAttemptWindow),
 		email:               sender,
+		maintainerAlerts:    newAttemptLimiter[string](1, maintainerAlertDedupWindow),
 	}
 
 	// Periodically purge stale sync-cooldown rows, expired sessions, and accounts
@@ -80,6 +82,15 @@ func Serve(cfg config.Config, st *store.Store) error {
 			s.emailChangeRequests.prune()
 			s.deleteRequests.prune()
 			s.tokenAttempts.prune()
+			s.maintainerAlerts.prune()
+		}
+	}()
+
+	// Send any due 42 client-secret rotation reminder at startup, then periodically.
+	go func() {
+		for {
+			s.checkSecretExpiry()
+			time.Sleep(30 * time.Minute)
 		}
 	}()
 

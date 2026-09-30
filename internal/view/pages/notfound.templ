@@ -35,3 +35,14 @@ templ ServerBusy(viewerLogin string) {
 		</main>
 	}
 }
+
+// AuthFailed is shown when the 42 OAuth callback's token exchange fails.
+templ AuthFailed(message, viewerLogin string) {
+	@Layout("Couldn't complete 42 authorization", viewerLogin, "") {
+		<main id="main" class="centered">
+			<h1>Couldn't complete 42 authorization</h1>
+			<p>{ message }</p>
+			<a class="button bright" href={ templ.SafeURL(routes.PageHome) }>Back to Fortytwode</a>
+		</main>
+	}
+}

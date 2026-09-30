@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // 42 API endpoints. These are fixed; only the credentials below vary per user.
@@ -43,32 +44,38 @@ const (
 // Config holds everything needed to authenticate against the 42 API and to send
 // the transactional verification email.
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURI  string
-	Scope        string
+	ClientID           string
+	ClientSecret       string
+	ClientSecretNext   string
+	ClientSecretExpiry time.Time // zero when unset: no rotation reminders
+	RedirectURI        string
+	Scope              string
 
 	// Transactional email (Resend). ResendAPIKey is required to actually send;
 	// when empty, the email layer logs and skips so local dev still works. MailFrom
 	// is the assembled "Name <addr>" sender header; MailReplyTo (optional, e.g. a
-	// Cloudflare-routed inbox) lets replies reach a human.
-	ResendAPIKey string
-	MailFrom     string
-	MailReplyTo  string
+	// Cloudflare-routed inbox) lets replies reach a human. MaintainerEmail receives
+	// operational alerts; it's the same inbox, empty when unset (alerts only log).
+	ResendAPIKey    string
+	MailFrom        string
+	MailReplyTo     string
+	MaintainerEmail string
 }
 
 // Load reads the configuration from environment variables, applying defaults
 // for the optional ones and erroring if a required one is missing.
 func Load() (Config, error) {
 	config := Config{
-		ClientID:     env("FT_CLIENT_ID", ""),
-		ClientSecret: env("FT_CLIENT_SECRET", ""),
-		RedirectURI:  env("FT_REDIRECT_URI", "http://localhost:3000/callback"),
-		Scope:        defaultScope,
-		ResendAPIKey: env("RESEND_API_KEY", ""),
-		MailFrom:     defaultMailFromName + " <" + env("MAIL_FROM_ADDRESS", defaultMailFromAddress) + ">",
-		MailReplyTo:  env("MAIL_REPLY_TO", ""),
+		ClientID:         env("FT_CLIENT_ID", ""),
+		ClientSecret:     env("FT_CLIENT_SECRET", ""),
+		ClientSecretNext: env("FT_CLIENT_SECRET_NEXT", ""),
+		RedirectURI:      env("FT_REDIRECT_URI", "http://localhost:3000/callback"),
+		Scope:            defaultScope,
+		ResendAPIKey:     env("RESEND_API_KEY", ""),
+		MailFrom:         defaultMailFromName + " <" + env("MAIL_FROM_ADDRESS", defaultMailFromAddress) + ">",
+		MailReplyTo:      env("MAIL_REPLY_TO", ""),
 	}
+	config.MaintainerEmail = config.MailReplyTo
 
 	var missing []string
 	if config.ClientID == "" {
@@ -82,6 +89,13 @@ func Load() (Config, error) {
 			"missing required environment variable(s): %s\n"+
 				"see .env.example, then export them (e.g. `set -a; . ./.env; set +a`)",
 			strings.Join(missing, ", "))
+	}
+
+	if rawExpiry := env("FT_CLIENT_SECRET_EXPIRES", ""); rawExpiry != "" {
+		var err error
+		if config.ClientSecretExpiry, err = time.Parse(time.DateOnly, rawExpiry); err != nil {
+			return Config{}, fmt.Errorf("invalid FT_CLIENT_SECRET_EXPIRES %q, want YYYY-MM-DD", rawExpiry)
+		}
 	}
 	return config, nil
 }

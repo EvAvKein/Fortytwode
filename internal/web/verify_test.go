@@ -66,6 +66,11 @@ func (f *fakeSender) SendDeletionConfirmation(_ context.Context, to, login, link
 	return nil
 }
 
+func (f *fakeSender) SendMaintainerAlert(_ context.Context, to, subject, body string) error {
+	f.record(to, subject, body)
+	return nil
+}
+
 // waitForSent blocks until at least n emails have been recorded (with a
 // timeout), giving the goroutine launched by issueVerification/issueDeletion
 // time to run.

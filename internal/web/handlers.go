@@ -12,8 +12,6 @@ import (
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/api42"
-	"github.com/EvAvKein/Fortytwode/internal/auth"
-	"github.com/EvAvKein/Fortytwode/internal/config"
 	"github.com/EvAvKein/Fortytwode/internal/fetch"
 	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/snapshot"
@@ -80,126 +78,6 @@ func (s *Server) rejectCrossSite(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	return false
-}
-
-// handleSync starts the 42 OAuth authorization-code flow. Cross-site navigations
-// are rejected (sync needs no session, so SameSite cookies don't gate it): another
-// site could otherwise send visitors here and spend their sync cooldown/budget.
-func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {
-	if s.rejectCrossSite(w, r) {
-		return
-	}
-	state := randomToken()
-	s.setCookie(w, stateCookie, state, 10*time.Minute)
-	authURL := config.AuthorizeURL + "?" + url.Values{
-		"client_id":     {s.cfg.ClientID},
-		"redirect_uri":  {s.cfg.RedirectURI},
-		"response_type": {"code"},
-		"scope":         {s.cfg.Scope},
-		"state":         {state},
-	}.Encode()
-	http.Redirect(w, r, authURL, http.StatusFound)
-}
-
-// handleLogin42 starts a 42 OAuth flow for authentication only (no data sync).
-// It sets an intent cookie so the callback knows to look up an existing account
-// by 42 identity rather than starting a full sync.
-func (s *Server) handleLogin42(w http.ResponseWriter, r *http.Request) {
-	if s.rejectCrossSite(w, r) {
-		return
-	}
-	state := randomToken()
-	s.setCookie(w, stateCookie, state, 10*time.Minute)
-	s.setCookie(w, intentCookie, "login", 10*time.Minute)
-	authURL := config.AuthorizeURL + "?" + url.Values{
-		"client_id":     {s.cfg.ClientID},
-		"redirect_uri":  {s.cfg.RedirectURI},
-		"response_type": {"code"},
-		"scope":         {s.cfg.Scope},
-		"state":         {state},
-	}.Encode()
-	http.Redirect(w, r, authURL, http.StatusFound)
-}
-
-// handleCallback validates the OAuth redirect, exchanges the code for a token,
-// and kicks off a background sync job. A logged-in user's job updates their
-// account (if the 42 identity matches); an anonymous job awaits sign-up,
-// download, or — if its 42 identity turns out to be registered — sign-in.
-func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	if e := q.Get("error"); e != "" {
-		http.Error(w, "Authorization denied: "+e, http.StatusBadRequest)
-		return
-	}
-	stateC, err := r.Cookie(stateCookie)
-	if err != nil || q.Get("state") == "" || q.Get("state") != stateC.Value {
-		http.Error(w, "OAuth state mismatch, please try syncing again", http.StatusBadRequest)
-		return
-	}
-	s.clearCookie(w, stateCookie)
-	intent := ""
-	if c, err := r.Cookie(intentCookie); err == nil {
-		intent = c.Value
-	}
-	s.clearCookie(w, intentCookie)
-	code := q.Get("code")
-	if code == "" {
-		http.Error(w, "no authorization code in callback", http.StatusBadRequest)
-		return
-	}
-
-	token, err := auth.ExchangeCode(s.cfg, code)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: token exchange failed: %v\n", err)
-		http.Error(w, "Could not complete 42 authorization, please try again. If this continues happening, please report it at https://github.com/EvAvKein/Fortytwode/issues", http.StatusBadGateway)
-		return
-	}
-
-	if intent == "login" {
-		s.handleLoginFlow(w, r, token)
-		return
-	}
-
-	var claimAccountID, expectFtID int64
-	acc, loggedIn := s.currentAccount(r)
-	if loggedIn {
-		claimAccountID, expectFtID = acc.ID, acc.FtID
-	}
-
-	// One running sync per client: a second concurrent attempt would spend more
-	// 42 API budget against the shared limiter before the per-42-user cooldown
-	// (enforced once /me reveals the user) can apply. The in-flight job's cookie
-	// is still set, so the progress page just picks it back up.
-	clientKey := s.clientKey(r, loggedIn)
-	jobID, j, ok := s.jobs.create(clientKey)
-	if !ok {
-		// create refuses in two cases: this client already has a running job
-		// (pick it back up on the syncing page), or the registry is full of
-		// other clients' in-flight syncs (transient: show a styled 503).
-		if s.jobs.hasRunning(clientKey) {
-			http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
-			return
-		}
-		renderStatus(w, r, http.StatusServiceUnavailable, pages.ServerBusy(s.viewerLogin(r)))
-		return
-	}
-	s.setCookie(w, jobCookie, jobID, s.jobs.ttl)
-
-	// A logged-in user's 42 id is known up front, so reject a too-soon re-sync
-	// here — before spending even the /me request. The job is failed immediately
-	// so the cooldown message surfaces over the same SSE error path. Anonymous
-	// syncs are still gated authoritatively in startSync, once /me reveals who
-	// they are. A pre-check error is ignored; the authoritative reserve will run.
-	if claimAccountID != 0 {
-		if retryAfter, active, lastSync, err := s.store.SyncCooldown(r.Context(), expectFtID, syncCooldown); err == nil && active {
-			j.fail(cooldownError(lastSync, retryAfter))
-			http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
-			return
-		}
-	}
-
-	s.startSync(token, j, claimAccountID, expectFtID)
-	http.Redirect(w, r, routes.PageSyncing, http.StatusFound)
 }
 
 // startSync runs the pull in the background, pushing progress to the job. A
@@ -500,12 +378,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// The cap is keyed on the submitted address and checked in-memory before any DB
 	// work, so telling the user they're over it reveals nothing about whether an account
 	// exists — only that this address has requested too many links recently.
-	if !s.loginAttempts.allowed(email) {
+	if !s.loginAttempts.take(email) {
 		renderStatus(w, r, http.StatusTooManyRequests,
 			pages.LoginForm("Too many login link requests — wait a little before trying again.", ""))
 		return
 	}
-	s.loginAttempts.recordFailed(email)
 	// Respond before any DB work, then look up and mail on a background context, so the
 	// response time doesn't depend on whether the address is registered (which would
 	// otherwise reveal whether an account exists).
@@ -799,12 +676,11 @@ func (s *Server) handleSettingsEmail(w http.ResponseWriter, r *http.Request) {
 	// someone could repeatedly submit different addresses and read that reply to learn
 	// which emails have accounts; charging the probe against the cap limits how many
 	// addresses they can test.
-	if !s.emailChangeRequests.allowed(acc.ID) {
+	if !s.emailChangeRequests.take(acc.ID) {
 		d.EmailError = "Too many requests, wait a little before trying again"
 		renderStatus(w, r, http.StatusTooManyRequests, pages.Settings(d, acc.FtLogin))
 		return
 	}
-	s.emailChangeRequests.recordFailed(acc.ID)
 	// Reject an address already taken by another account up front, rather than only
 	// at confirmation time; the unique constraint still backstops a race (ConsumeEmailChange).
 	if _, err := s.store.AccountByEmail(r.Context(), newEmail); err == nil {
