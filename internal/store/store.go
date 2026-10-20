@@ -1,7 +1,7 @@
 // Package store persists app accounts (each owning one 42 snapshot in a JSONB
-// column) and login sessions in Postgres. The snapshot is a cache over the 42
-// API, read whole and rendered whole, so there is no relational model beyond the
-// account row and its sessions.
+// column), their photos, and login sessions in Postgres. The snapshot is a cache
+// over the 42 API, read whole and rendered whole, so there is no relational model
+// beyond the account row, its photos, and its sessions.
 package store
 
 import (
@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/EvAvKein/Fortytwode/internal/api42"
 	"github.com/EvAvKein/Fortytwode/internal/snapshot"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -195,6 +196,63 @@ func (s *Store) UpdateSnapshot(ctx context.Context, accountID int64, data map[st
 		s.noteCampusZone(curated)
 	}
 	return err
+}
+
+// Photo variants stored in account_photos.
+const (
+	PhotoOriginal = "original"
+	PhotoSmall    = "small"
+)
+
+// SavePhotos stores the account's photo variants, replacing earlier copies. A nil
+// variant (none on 42, or its download failed) keeps the previous copy.
+func (s *Store) SavePhotos(ctx context.Context, accountID int64, original, small *api42.Photo) error {
+	for variant, p := range map[string]*api42.Photo{PhotoOriginal: original, PhotoSmall: small} {
+		if p == nil {
+			continue
+		}
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO account_photos (account_id, variant, content_type, bytes)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (account_id, variant) DO UPDATE
+			SET content_type = EXCLUDED.content_type, bytes = EXCLUDED.bytes`,
+			accountID, variant, p.ContentType, p.Bytes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// PhotoVariants reports which photo variants the account has stored.
+func (s *Store) PhotoVariants(ctx context.Context, accountID int64) (map[string]bool, error) {
+	rows, err := s.pool.Query(ctx, `SELECT variant FROM account_photos WHERE account_id = $1`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	variants, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	has := map[string]bool{}
+	for _, v := range variants {
+		has[v] = true
+	}
+	return has, nil
+}
+
+// PhotoByLogin returns one photo variant of the account with this 42 login, plus
+// whether that profile is public (for the caller's visibility check). ErrNotFound
+// if there's no such account or variant.
+func (s *Store) PhotoByLogin(ctx context.Context, login, variant string) (photo api42.Photo, isPublic bool, err error) {
+	err = s.pool.QueryRow(ctx, `
+		SELECT p.content_type, p.bytes, a.is_public
+		FROM account_photos p JOIN accounts a ON a.id = p.account_id
+		WHERE a.ft_login = $1 AND p.variant = $2`,
+		login, variant).Scan(&photo.ContentType, &photo.Bytes, &isPublic)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return api42.Photo{}, false, ErrNotFound
+	}
+	return photo, isPublic, err
 }
 
 // UpdateVisibility sets the public opt-in and the per-section overrides.

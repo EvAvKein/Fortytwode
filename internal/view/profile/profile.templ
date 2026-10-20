@@ -12,8 +12,12 @@ import (
 templ ProfileHeader(p *model.Profile) {
 	<header class="profile">
 		<div class="profile-id">
-			if p.ImageURL != "" {
+			if p.PhotoURL != "" {
+				<a href={ templ.SafeURL(p.PhotoURL) }><img src={ p.ImageURL } alt=""/></a>
+			} else if p.ImageURL != "" {
 				<img src={ p.ImageURL } alt=""/>
+			} else {
+				<div class="avatar" aria-hidden="true"></div>
 			}
 			<div>
 				<h1>{ p.Name }</h1>

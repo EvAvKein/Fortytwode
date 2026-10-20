@@ -30,7 +30,6 @@ type Profile struct {
 	Login           string        `json:"login"`
 	Name            string        `json:"name"` // pre-resolved displayname||usual_full_name||login
 	Email           string        `json:"email,omitempty"`
-	ImageURL        string        `json:"image_url,omitempty"`
 	Campus          string        `json:"campus,omitempty"`
 	CampusTimeZone  string        `json:"campus_time_zone,omitempty"` // IANA name, e.g. "Europe/Paris"; renders campus-local times
 	Wallet          int           `json:"wallet"`
@@ -319,7 +318,6 @@ func profileFrom(me api42.Me) Profile {
 		Login:           me.Login,
 		Name:            cmp.Or(me.Displayname, me.UsualFullName, me.Login),
 		Email:           me.Email,
-		ImageURL:        deref(me.Image.Link),
 		Wallet:          me.Wallet,
 		CorrectionPoint: me.CorrectionPoint,
 		PoolMonth:       deref(me.PoolMonth),

@@ -164,9 +164,8 @@ func load[T any](snaps map[string]json.RawMessage, name string) []T {
 
 func buildProfile(p snapshot.Profile, coalitions []snapshot.Coalition, owner bool, vis map[string]bool) *model.Profile {
 	prof := &model.Profile{
-		Name:     cmp.Or(p.Name, "Unknown"),
-		Login:    p.Login,
-		ImageURL: p.ImageURL,
+		Name:  cmp.Or(p.Name, "Unknown"),
+		Login: p.Login,
 	}
 
 	if p.Campus != "" {

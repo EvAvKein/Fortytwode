@@ -21,3 +21,7 @@ const (
 
 // PageProfile returns the canonical profile page path for a 42 login.
 func PageProfile(login string) string { return "/users/" + login }
+
+// PagePhoto returns the path serving a profile's stored 42 photo (full
+// resolution; add ?size=small for the header's display copy).
+func PagePhoto(login string) string { return PageProfile(login) + "/photo" }

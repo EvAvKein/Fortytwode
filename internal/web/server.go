@@ -153,6 +153,7 @@ func (server *Server) routes() http.Handler {
 	pages.HandleFunc("GET "+routes.PageConfirmDelete, server.handleDeletePending)
 	pages.HandleFunc("GET "+routes.PagePrivacy, server.handlePrivacy)
 	pages.HandleFunc("GET "+routes.PageProfile("{login}"), server.handleProfile)
+	pages.HandleFunc("GET "+routes.PagePhoto("{login}"), server.handlePhoto)
 	registerAssets(pages) // fingerprinted /static/* stylesheet + scripts
 	pages.Handle(routes.APIPrefix()+"/", http.StripPrefix(routes.APIPrefix(), api))
 	pages.HandleFunc("/", server.handleNotFound)

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/EvAvKein/Fortytwode/internal/config"
@@ -141,6 +142,58 @@ func backoff(retryAfter string, attempt int) time.Duration {
 func (client *Client) GetOne(ctx context.Context, path string) (json.RawMessage, error) {
 	body, _, err := client.request(ctx, path, nil)
 	return body, err
+}
+
+// maxPhotoBytes caps a downloaded photo.
+const maxPhotoBytes = 10_485_760 // 10 MiB
+
+// photoTypes are the content types a photo may have. SVG is excluded: we serve
+// the bytes from our own origin, where an SVG could carry script.
+var photoTypes = map[string]bool{"image/jpeg": true, "image/png": true, "image/gif": true, "image/webp": true}
+
+// Photo is a downloaded user photo.
+type Photo struct {
+	ContentType string
+	Bytes       []byte
+}
+
+// GetPhoto downloads a user photo from 42's CDN, which needs the bearer token.
+// The URL must be under config.PhotoBase, so a crafted link can't
+// send the token elsewhere.
+func (client *Client) GetPhoto(ctx context.Context, rawURL string) (Photo, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme+"://"+u.Host != config.PhotoBase {
+		return Photo{}, fmt.Errorf("unexpected photo URL %q", rawURL)
+	}
+	if err := client.limiter.Wait(ctx); err != nil {
+		return Photo{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return Photo{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+client.token)
+	res, err := client.http.Do(req)
+	if err != nil {
+		return Photo{}, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return Photo{}, fmt.Errorf("%d for photo", res.StatusCode)
+	}
+	ctype, _, _ := strings.Cut(res.Header.Get("Content-Type"), ";")
+	ctype = strings.TrimSpace(ctype)
+	if !photoTypes[ctype] {
+		return Photo{}, fmt.Errorf("unsupported photo type %q", ctype)
+	}
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxPhotoBytes+1))
+	if err != nil {
+		return Photo{}, err
+	}
+	if len(body) > maxPhotoBytes {
+		return Photo{}, fmt.Errorf("photo exceeds %d bytes", maxPhotoBytes)
+	}
+	return Photo{ContentType: ctype, Bytes: body}, nil
 }
 
 // GetAll fetches every page of a paginated collection and returns the records

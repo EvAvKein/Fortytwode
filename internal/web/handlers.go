@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -123,16 +124,27 @@ func (s *Server) startSync(token string, j *job, claimAccountID, expectFtID int6
 				j.fail(err)
 				return
 			}
+			s.savePhotos(ctx, claimAccountID, res.Photos)
 		} else if acc, err := s.store.AccountByFtID(ctx, res.FtID); err == nil {
 			if err := s.store.UpdateSnapshot(ctx, acc.ID, res.Snapshot); err != nil {
 				j.fail(err)
 				return
 			}
+			s.savePhotos(ctx, acc.ID, res.Photos)
 			j.linkAccount(acc.ID, acc.FtLogin)
 		}
 		ok = true // sync succeeded: keep the cooldown slot
-		j.finish(res.Snapshot, res.FtID, res.FtLogin)
+		j.finish(res)
 	}()
+}
+
+// savePhotos stores a pull's photos on the account. A failure only costs the
+// photo (the profile shows the placeholder), so it's logged rather than failing
+// the sync or sign-up.
+func (s *Server) savePhotos(ctx context.Context, accountID int64, p fetch.Photos) {
+	if err := s.store.SavePhotos(ctx, accountID, p.Original, p.Small); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: save photos for account %d: %v\n", accountID, err)
+	}
 }
 
 // cooldownError is the error shown when a 42 user re-syncs within the cooldown,
@@ -241,9 +253,9 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDownloadRaw(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(jobCookie); err == nil {
 		if j, ok := s.jobs.get(c.Value); ok {
-			if snap, _, login, done := j.result(); done {
+			if res, done := j.result(); done {
 				go s.store.IncrementDownloads()
-				writeJSONDownload(w, snap, login+"-raw")
+				writeJSONDownload(w, res.Snapshot, res.FtLogin+"-raw")
 				return
 			}
 		}
@@ -273,9 +285,9 @@ func (s *Server) handleDownloadSaved(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDownloadCurated(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(jobCookie); err == nil {
 		if j, ok := s.jobs.get(c.Value); ok {
-			if snap, _, login, done := j.result(); done {
+			if res, done := j.result(); done {
 				go s.store.IncrementDownloads()
-				writeJSONDownload(w, snapshot.Curate(snap), login+"-curated")
+				writeJSONDownload(w, snapshot.Curate(res.Snapshot), res.FtLogin+"-curated")
 				return
 			}
 		}
@@ -330,12 +342,13 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your fetch expired. Please fetch your 42 data again", true, ""))
 		return
 	}
-	snap, ftID, ftLogin, done := j.result()
+	res, done := j.result()
 	if !done {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("Your fetch hasn't finished yet, wait for it to complete", false, ""))
 		return
 	}
-	id, err := s.store.CreateAccount(r.Context(), email, ftID, ftLogin, snap)
+	ftLogin := res.FtLogin
+	id, err := s.store.CreateAccount(r.Context(), email, res.FtID, ftLogin, res.Snapshot)
 	if errors.Is(err, store.ErrDuplicate) {
 		renderStatus(w, r, http.StatusUnprocessableEntity, pages.SignupForm("This email or 42 profile already has an account, try logging in", false, ""))
 		return
@@ -344,6 +357,7 @@ func (s *Server) handleSignup(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not create account", http.StatusInternalServerError)
 		return
 	}
+	s.savePhotos(r.Context(), id, res.Photos)
 	go s.store.IncrementProfiles()
 	s.jobs.delete(jobID)
 	s.clearCookie(w, jobCookie)
@@ -523,11 +537,59 @@ func (s *Server) handleProfile(w http.ResponseWriter, r *http.Request) {
 	d := view.Build(acc.Data, owner, acc.Visibility, s.store.CampusTimeZone)
 	d.Owner = owner
 	d.Login = acc.FtLogin
+	if d.Profile != nil {
+		s.setPhotoURLs(r.Context(), d.Profile, acc)
+	}
 	if owner {
 		d.SyncedAtISO = acc.FetchedAt.UTC().Format(time.RFC3339)
 		d.CanResync = s.canResync(r.Context(), acc)
 	}
 	render(w, r, pages.Profile(d, s.viewerLogin(r)))
+}
+
+// setPhotoURLs points the header at the account's stored photos: the small copy
+// for display (the original if that's all there is), linking to the original.
+// The ?synced= changes on every sync, so a re-synced photo isn't served from cache.
+func (s *Server) setPhotoURLs(ctx context.Context, p *model.Profile, acc store.Account) {
+	has, err := s.store.PhotoVariants(ctx, acc.ID)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: photo variants for account %d: %v\n", acc.ID, err)
+		return
+	}
+	synced := "synced=" + strconv.FormatInt(acc.FetchedAt.Unix(), 10)
+	base := routes.PagePhoto(acc.FtLogin)
+	if has[store.PhotoOriginal] {
+		p.PhotoURL = base + "?" + synced
+		p.ImageURL = p.PhotoURL
+	}
+	if has[store.PhotoSmall] {
+		p.ImageURL = base + "?size=" + store.PhotoSmall + "&" + synced
+	}
+}
+
+// handlePhoto serves a profile's stored photo, visible to the same viewers as the
+// profile header: anyone logged in, or anyone at all when the profile is public.
+func (s *Server) handlePhoto(w http.ResponseWriter, r *http.Request) {
+	variant := store.PhotoOriginal
+	if r.URL.Query().Get("size") == store.PhotoSmall {
+		variant = store.PhotoSmall
+	}
+	photo, isPublic, err := s.store.PhotoByLogin(r.Context(), r.PathValue("login"), variant)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	if _, loggedIn := s.currentAccount(r); !loggedIn && !isPublic {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", photo.ContentType)
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	w.Write(photo.Bytes)
 }
 
 func (s *Server) handleSettingsForm(w http.ResponseWriter, r *http.Request) {

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/EvAvKein/Fortytwode/internal/api42"
@@ -26,26 +27,37 @@ type meHeader struct {
 	ID          int               `json:"id"`
 	Login       string            `json:"login"`
 	TitlesUsers []json.RawMessage `json:"titles_users"`
+	Image       api42.Image       `json:"image"`
 }
 
-// Result is a completed pull: the snapshot (resource -> payload) plus the 42
-// identity it belongs to.
+// Result is a completed pull: the snapshot (resource -> payload), the user's
+// photos, and the 42 identity it belongs to.
 type Result struct {
 	Snapshot map[string]json.RawMessage
+	Photos   Photos
 	FtID     int64
 	FtLogin  string
 }
 
-// Pull fetches /me, titles_users, and every personal collection, returning them
-// as one snapshot. progress (if non-nil) is called once per step before it runs,
+// Photos holds the user's photo at full resolution and 42's small version (for
+// display). Either is nil when the user has none or its download failed.
+type Photos struct {
+	Original *api42.Photo
+	// OriginalName is the original's filename on 42's CDN (e.g. "login.jpg").
+	OriginalName string
+	Small        *api42.Photo
+}
+
+// Pull fetches /me, the user's photos, titles_users, and every personal
+// collection, returning them as one snapshot. progress (if non-nil) is called once per step before it runs,
 // with the 0-based count of completed steps, the total, and the step's name. A
-// single failing collection is skipped rather than aborting the whole pull.
+// single failing collection or photo is skipped rather than aborting the whole pull.
 //
 // afterMe (if non-nil) is called with the 42 user id as soon as /me identifies
 // the user, before any further requests; a non-nil error from it aborts the pull
 // (used by the web server to enforce the per-user sync cooldown cheaply).
 func Pull(ctx context.Context, client *api42.Client, progress func(step, total int, name string), afterMe func(ftID int64) error) (Result, error) {
-	total := 2 + len(api42.Collections) // me, titles_users, + each collection
+	total := 3 + len(api42.Collections) // me, photo, titles_users, + each collection
 	step := 0
 	emit := func(name string) {
 		if progress != nil {
@@ -77,6 +89,9 @@ func Pull(ctx context.Context, client *api42.Client, progress func(step, total i
 		}
 	}
 
+	emit("photo")
+	photos := pullPhotos(ctx, client, me.Image)
+
 	emit("titles")
 	titles, err := json.Marshal(me.TitlesUsers)
 	if err != nil {
@@ -98,7 +113,33 @@ func Pull(ctx context.Context, client *api42.Client, progress func(step, total i
 		snapshot[ep.File] = raw
 	}
 
-	return Result{Snapshot: snapshot, FtID: int64(me.ID), FtLogin: me.Login}, nil
+	return Result{Snapshot: snapshot, Photos: photos, FtID: int64(me.ID), FtLogin: me.Login}, nil
+}
+
+// pullPhotos downloads the original photo and the small version, skipping either
+// on failure.
+func pullPhotos(ctx context.Context, client *api42.Client, img api42.Image) Photos {
+	get := func(link *string) *api42.Photo {
+		if link == nil || *link == "" {
+			return nil
+		}
+		photo, err := client.GetPhoto(ctx, *link)
+		if err != nil {
+			fmt.Printf("  skipped photo (%v)\n", err)
+			return nil
+		}
+		return &photo
+	}
+	var photos Photos
+	if photos.Original = get(img.Link); photos.Original != nil {
+		// Kept to a plain filename, since the CLI writes it under ./output.
+		photos.OriginalName = path.Base(*img.Link)
+		if photos.OriginalName == "." || photos.OriginalName == ".." || photos.OriginalName == "/" {
+			photos.OriginalName = "photo"
+		}
+	}
+	photos.Small = get(img.Versions.Small)
+	return photos
 }
 
 // pull authenticates (caching the token in .token.json) and runs a full pull,
@@ -128,7 +169,14 @@ func Run(ctx context.Context, cfg config.Config) error {
 			return err
 		}
 	}
-	fmt.Printf("\nDone. Wrote %d files to ./%s/ for %s (id %d).\n", len(res.Snapshot), outputDir, res.FtLogin, res.FtID)
+	files := len(res.Snapshot)
+	if p := res.Photos; p.Original != nil {
+		if err := os.WriteFile(filepath.Join(outputDir, p.OriginalName), p.Original.Bytes, 0o644); err != nil {
+			return err
+		}
+		files++
+	}
+	fmt.Printf("\nDone. Wrote %d files to ./%s/ for %s (id %d).\n", files, outputDir, res.FtLogin, res.FtID)
 	return nil
 }
 

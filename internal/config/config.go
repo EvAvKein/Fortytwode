@@ -15,6 +15,7 @@ const (
 	AuthorizeURL = APIBase + "/oauth/authorize"
 	TokenURL     = APIBase + "/oauth/token"
 	APIv2        = APIBase + "/v2"
+	PhotoBase    = "https://cdn.intra.42.fr"
 )
 
 // AppAPIVersion is the version prefix for Fortytwode's own REST API.

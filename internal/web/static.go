@@ -11,12 +11,11 @@ import (
 // inline allowance — the high-value protection against injected scripts. Exceptions:
 //   - style-src-attr 'unsafe-inline' keeps the few dynamic inline style="" attributes
 //     (skill-bar widths, coalition colour); they're server-computed and can't run code.
-//   - img-src allows https: so 42's CDN avatars load without pinning a host 42 may change.
 //   - connect-src 'self' permits the /api/<version>/sync/stream EventSource (same-origin SSE).
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self'; " +
 	"style-src 'self'; style-src-attr 'unsafe-inline'; " +
-	"img-src 'self' https: data:; " +
+	"img-src 'self' data:; " +
 	"connect-src 'self'; " +
 	"form-action 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'"
 

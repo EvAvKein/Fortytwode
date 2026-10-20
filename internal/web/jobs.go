@@ -1,9 +1,10 @@
 package web
 
 import (
-	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/EvAvKein/Fortytwode/internal/fetch"
 )
 
 type jobStatus string
@@ -20,7 +21,7 @@ const (
 // gets only ~2/N req/s.
 const slowTrafficThreshold = 3
 
-// job is one in-flight or completed sync. The 42 snapshot lives here (in RAM)
+// job is one in-flight or completed sync. The 42 snapshot and photos live here (in RAM)
 // only until the job is claimed at sign-up, downloaded, or swept by TTL.
 type job struct {
 	mu       sync.Mutex
@@ -32,11 +33,9 @@ type job struct {
 	// never cleared, so the page's notice stays put for the rest of the sync instead
 	// of flapping as concurrent syncs come and go.
 	slow         bool
-	snapshot     map[string]json.RawMessage
-	ftID         int64
-	ftLogin      string
-	matchedID    int64  // existing account this 42 identity belongs to, 0 if none
-	matchedLogin string // that account's profile login, for the post-sync sign-in link
+	res          fetch.Result // the completed pull: snapshot, photos, 42 identity
+	matchedID    int64        // existing account this 42 identity belongs to, 0 if none
+	matchedLogin string       // that account's profile login, for the post-sync sign-in link
 	errMsg       string
 	clientKey    string // who started it, for the per-client concurrency cap (set once)
 	createdAt    time.Time
@@ -57,10 +56,10 @@ func (j *job) markSlow() {
 	j.slow = true
 }
 
-func (j *job) finish(snapshot map[string]json.RawMessage, ftID int64, ftLogin string) {
+func (j *job) finish(res fetch.Result) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	j.status, j.snapshot, j.ftID, j.ftLogin = jobDone, snapshot, ftID, ftLogin
+	j.status, j.res = jobDone, res
 	j.step, j.finishedAt = j.total, time.Now()
 }
 
@@ -106,14 +105,14 @@ func (j *job) state() jobState {
 	return jobState{Status: string(j.status), Step: j.step, Total: j.total, Name: j.stepName, Error: j.errMsg, Matched: j.matchedID != 0, Slow: j.slow}
 }
 
-// result returns the completed snapshot and identity; ok is false unless done.
-func (j *job) result() (snapshot map[string]json.RawMessage, ftID int64, ftLogin string, ok bool) {
+// result returns the completed pull; ok is false unless done.
+func (j *job) result() (res fetch.Result, ok bool) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.status != jobDone {
-		return nil, 0, "", false
+		return fetch.Result{}, false
 	}
-	return j.snapshot, j.ftID, j.ftLogin, true
+	return j.res, true
 }
 
 // jobRegistry is an in-memory, TTL-evicted, size-capped map of jobs.

@@ -128,7 +128,9 @@ header.profile {
 		gap: 1rem;
 		align-items: center;
 
-		img {
+		img,
+		.avatar {
+			flex-shrink: 0;
 			width: 80px;
 			height: 80px;
 			border-radius: 50%;

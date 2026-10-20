@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/EvAvKein/Fortytwode/internal/fetch"
 	"github.com/EvAvKein/Fortytwode/internal/routes"
 	"github.com/EvAvKein/Fortytwode/internal/storetest"
 	"github.com/EvAvKein/Fortytwode/internal/view"
@@ -110,7 +111,7 @@ func TestStreamEmitsDone(t *testing.T) {
 	t.Parallel()
 	s := &Server{jobs: newJobRegistry()}
 	id, j, _ := s.jobs.create("")
-	j.finish(map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, 42, "tester")
+	j.finish(fetch.Result{Snapshot: map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, FtID: 42, FtLogin: "tester"})
 
 	req := httptest.NewRequest(http.MethodGet, routes.APISyncStream.URL(), nil)
 	req.AddCookie(&http.Cookie{Name: jobCookie, Value: id})
@@ -134,7 +135,7 @@ func TestStreamSignalsMatch(t *testing.T) {
 	s := &Server{jobs: newJobRegistry()}
 	id, j, _ := s.jobs.create("")
 	j.linkAccount(7, "tester")
-	j.finish(map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, 42, "tester")
+	j.finish(fetch.Result{Snapshot: map[string]json.RawMessage{"me": json.RawMessage(`{}`)}, FtID: 42, FtLogin: "tester"})
 
 	req := httptest.NewRequest(http.MethodGet, routes.APISyncStream.URL(), nil)
 	req.AddCookie(&http.Cookie{Name: jobCookie, Value: id})
@@ -162,7 +163,7 @@ func TestCreateRejectsConcurrentClient(t *testing.T) {
 	}
 
 	// Once the first job finishes, the client may sync again.
-	j1.finish(nil, 0, "")
+	j1.finish(fetch.Result{})
 	if _, _, ok := r.create("ip:1.2.3.4"); !ok {
 		t.Error("client should be accepted again after its job finished")
 	}
@@ -191,7 +192,7 @@ func TestRunningCount(t *testing.T) {
 	}
 
 	// Finished and failed jobs stay in the registry but no longer count.
-	j1.finish(nil, 0, "")
+	j1.finish(fetch.Result{})
 	if n := r.runningCount(); n != 1 {
 		t.Errorf("after one finished: got %d running, want 1", n)
 	}
@@ -242,7 +243,7 @@ func TestHasRunning(t *testing.T) {
 	}
 
 	// A finished job no longer counts as running.
-	j.finish(nil, 0, "")
+	j.finish(fetch.Result{})
 	if r.hasRunning("ip:1.2.3.4") {
 		t.Error("finished job: hasRunning should be false")
 	}

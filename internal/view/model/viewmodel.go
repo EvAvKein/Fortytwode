@@ -122,11 +122,13 @@ type CoalitionBadge struct {
 
 // Profile is the rendered header view of the "me" snapshot.
 type Profile struct {
-	Name, Login, ImageURL string
-	PrimaryStats          []KV // Campus, Selection pool
-	Points                *PointsCard
-	Cursus                []CursusRow
-	Coalition             *CoalitionBadge
+	Name, Login  string
+	ImageURL     string // header photo; "" shows the placeholder
+	PhotoURL     string // full-resolution photo the header links to, if stored
+	PrimaryStats []KV   // Campus, Selection pool
+	Points       *PointsCard
+	Cursus       []CursusRow
+	Coalition    *CoalitionBadge
 }
 
 // PageData is everything a single render of the dashboard needs.
